@@ -16,6 +16,7 @@ class MetaALBroker(BrokerBase.__class__):
 class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
     """Брокер Alor"""
     # TODO Сделать обертку для поддержки множества брокеров
+    # TODO Сделать пример постановки заявок по разным портфелям
     # Обсуждение решения: https://community.backtrader.com/topic/1165/does-backtrader-support-multiple-brokers
     # Пример решения: https://github.com/JacobHanouna/backtrader/blob/ccxt_multi_broker/backtrader/brokers/ccxtmultibroker.py
 
@@ -49,6 +50,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
 
     def getcash(self):
         """Свободные средства по счету"""
+        # TODO Если не находимся в режиме Live, то не делать запросы
         if self.store.BrokerCls:  # Если брокер есть в хранилище
             if self.p.portfolio and self.p.exchange:  # Если заданы портфель и биржа
                 money = self.store.apProvider.GetMoney(self.p.portfolio, self.p.exchange)  # Денежная позиция
@@ -65,6 +67,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
 
     def getvalue(self, datas=None):
         """Баланс счета"""
+        # TODO Если не находимся в режиме Live, то не делать запросы
         if self.store.BrokerCls:  # Если брокер есть в хранилище
             if datas:  # Если получаем по тикерам
                 value = 0  # Будем набирать баланс счета по каждому тикеру
