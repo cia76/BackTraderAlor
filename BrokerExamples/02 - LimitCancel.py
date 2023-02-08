@@ -34,7 +34,7 @@ class LimitCancel(bt.Strategy):
             if self.order and self.order.status == bt.Order.Accepted:  # Если заявка не исполнена (принята брокером)
                 self.cancel(self.order)  # то снимаем ее
             limit_price = self.data.close[0] * (1 - self.p.LimitPct / 100)  # На n% ниже цены закрытия
-            self.order = self.buy(exectype=bt.Order.Limit, price=limit_price)  # Лимитная заявка на покупку
+            self.order = self.buy(exectype=bt.Order.Limit, plimit=limit_price)  # Лимитная заявка на покупку
         else:  # Если позиция есть
             self.order = self.close()  # Заявка на закрытие позиции по рыночной цене
 
