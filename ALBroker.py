@@ -54,14 +54,14 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         if self.store.BrokerCls:  # Если брокер есть в хранилище
             if self.p.portfolio and self.p.exchange:  # Если заданы портфель и биржа
                 money = self.store.apProvider.GetMoney(self.p.portfolio, self.p.exchange)  # Денежная позиция
-                self.cash = round(money['portfolio'] - money['cash'], 2)  # Округляем до копеек
+                self.cash = round(money['cash'], 2)  # Округляем до копеек
             else:  # Если получаем по всем портфелям/биржам
                 cash = 0  # Будем набирать свободные средства по каждому портфелю на каждой бирже
                 for p in self.portfolios:  # Пробегаемся по всем портфелям
                     for exchange in self.store.apProvider.exchanges:  # Пробегаемся по всем биржам
                         portfolio_name = self.portfolios[p][0]['portfolio']  # Название портфеля
                         money = self.store.apProvider.GetMoney(portfolio_name, exchange)  # Денежная позиция
-                        cash += round(money['portfolio'] - money['cash'], 2)  # Суммируем, округляем до копеек
+                        cash += round(money['cash'], 2)  # Суммируем, округляем до копеек
                     self.cash = cash  # Свободные средства по каждому портфелю на каждой бирже
         return self.cash
 
@@ -222,19 +222,23 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                 order.reject(self)  # то отклоняем заявку (Order.Rejected)
                 return order  # Возвращаем отмененную заявку
             account = order.info['account']  # Счет
-        if order.exectype in (Order.Limit, Order.StopLimit):  # Для лимитных/стоп-лимитных заявок
-            if not order.pricelimit:  # Если цена не указана
-                print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отменена. Лимитная цена (pricelimit) не указана для заявки типа {order.exectype}')
-                order.reject(self)  # то отклоняем заявку (Order.Rejected)
-                return order  # Возвращаем отмененную заявку
-            limit_price = self.store.bt_to_alor_price(exchange, symbol, order.pricelimit)  # получаем лимитную цену
         if order.exectype == Order.Market:  # Рыночная заявка
             response = self.store.apProvider.CreateMarketOrder(portfolio, exchange, symbol, side, quantity)
         elif order.exectype == Order.Limit:  # Лимитная заявка
+            if not order.price:  # Если цена не указана
+                print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отменена. Лимитная цена (price) не указана для заявки типа {order.exectype}')
+                order.reject(self)  # то отклоняем заявку (Order.Rejected)
+                return order  # Возвращаем отмененную заявку
+            limit_price = self.store.bt_to_alor_price(exchange, symbol, order.price)  # получаем лимитную цену
             response = self.store.apProvider.CreateLimitOrder(portfolio, exchange, symbol, side, quantity, limit_price)
         elif order.exectype == Order.Stop:  # Стоп заявка
             response = self.store.apProvider.CreateTakeProfitOrder(server, account, portfolio, exchange, symbol, side, quantity, stop_price)
         elif order.exectype == Order.StopLimit:  # Стоп-лимитная заявка
+            if not order.price:  # Если цена не указана
+                print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отменена. Лимитная цена (pricelimit) не указана для заявки типа {order.exectype}')
+                order.reject(self)  # то отклоняем заявку (Order.Rejected)
+                return order  # Возвращаем отмененную заявку
+            limit_price = self.store.bt_to_alor_price(exchange, symbol, order.price)  # получаем лимитную цену
             response = self.store.apProvider.CreateTakeProfitLimitOrder(server, account, portfolio, exchange, symbol, side, quantity, stop_price, limit_price)
         else:  # Close, StopTrail, StopTrailLimit, Historical заявки не реализованы
             print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отменена. Работа с заявками {order.exectype} не реализована')
