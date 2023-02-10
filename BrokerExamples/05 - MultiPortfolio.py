@@ -6,6 +6,7 @@ from AlorPy.Config import Config  # Файл конфигурации
 
 class MultiPortfolio(bt.Strategy):
     """Работа со множеством портфелей"""
+    # TODO Сделать постановку/снятие заявок по разным портфелям
     params = (  # Параметры торговой системы
         ('portfolio', None),  # Портфель
     )

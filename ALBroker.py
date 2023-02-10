@@ -36,31 +36,35 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         for p in self.portfolios:  # Пробегаемся по всем портфелям
             portfolio = self.portfolios[p][0]  # Портфель
             self.portfolios_accounts[portfolio['portfolio']] = portfolio['tks']  # Добавляем код портфеля/счета в список
+        self.cash_value = {}  # Справочник свободных средств/баланса счета по портфелю/бирже
         self.startingcash = self.cash = 0  # Стартовые и текущие свободные средства по счету
         self.startingvalue = self.value = 0  # Стартовый и текущий баланс счета
 
     def start(self):
         super(ALBroker, self).start()
-        self.startingcash = self.cash = self.getcash()  # Стартовые и текущие свободные средства по счету
-        self.startingvalue = self.value = self.getvalue()  # Стартовый и текущий баланс счета
+        self.store.apProvider.OnPosition = self.on_position  # Обработка позиций
+        self.store.apProvider.OnTrade = self.on_trade  # Обработка сделок
+        self.store.apProvider.OnOrder = self.on_order  # Обработка заявок
         if self.p.use_positions:  # Если нужно при запуске брокера получить текущие позиции на бирже
             self.store.get_positions()  # То получаем их
-        self.store.apProvider.OnOrder = self.on_order  # Обработка заявок
-        self.store.apProvider.OnTrade = self.on_trade  # Обработка сделок
         if self.p.portfolio and self.p.exchange:  # Если заданы портфель и биржа
             self.subscribe(self.p.portfolio, self.p.exchange)  # то подписываемся на их события
+        self.startingcash = self.cash = self.getcash()  # Стартовые и текущие свободные средства по счету
+        self.startingvalue = self.value = self.getvalue()  # Стартовый и текущий баланс счета
 
     def getcash(self):
         """Свободные средства по счету"""
-        # TODO Если не находимся в режиме Live, то не делать запросы
         if self.store.BrokerCls:  # Если брокер есть в хранилище
             portfolios = (self.p.portfolio,) if self.p.portfolio else self.portfolios_accounts  # Указанный портфель или все
             exchanges = (self.p.exchange,) if self.p.exchange else self.store.apProvider.exchanges  # Указанная биржа или все
             cash = 0  # Будем набирать свободные средства по каждому портфелю на каждой бирже
             for portfolio in portfolios:  # Пробегаемся по всем заданным портфелям
                 for exchange in exchanges:  # Пробегаемся по всем заданным биржам
-                    money = self.store.apProvider.GetMoney(portfolio, exchange)  # Денежная позиция
-                    cash += round(money['cash'], 2)  # Суммируем, округляем до копеек
+                    if ('positions', portfolio, exchange) not in self.subscriptions:  # Если подписки на позиции для портфеля/биржи нет в подписках
+                        self.subscribe(portfolio, exchange)  # то подписываемся на события портфеля/биржи
+                    if (portfolio, exchange) in self.cash_value:  # Если есть значения по подписке
+                        c, _ = self.cash_value[(portfolio, exchange)]  # Получаем значение из подписки
+                        cash += round(c, 2)  # Суммируем, округляем до копеек
                     if cash:  # Если есть свободные средства
                         break  # То на др. биржах не смотрим, т.к. свободные средства на них дублируются
             self.cash = cash  # Свободные средства по каждому портфелю на каждой бирже
@@ -68,7 +72,6 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
 
     def getvalue(self, datas=None):
         """Баланс счета"""
-        # TODO Если не находимся в режиме Live, то не делать запросы
         if self.store.BrokerCls:  # Если брокер есть в хранилище
             portfolios = (self.p.portfolio,) if self.p.portfolio else self.portfolios_accounts  # Указанный портфель или все
             value = 0  # Будем набирать баланс счета
@@ -88,8 +91,11 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                 exchanges = (self.p.exchange,) if self.p.exchange else self.store.apProvider.exchanges  # Указанная биржа или все
                 for portfolio in portfolios:  # Пробегаемся по всем портфелям
                     for exchange in exchanges:  # Пробегаемся по всем биржам
-                        money = self.store.apProvider.GetMoney(portfolio, exchange)  # Денежная позиция
-                        value += round(money['portfolio'], 2)  # Суммируем, округляем до копеек
+                        if ('positions', portfolio, exchange) not in self.subscriptions:  # Если подписки на позиции для портфеля/биржи нет в подписках
+                            self.subscribe(portfolio, exchange)  # то подписываемся на события портфеля/биржи
+                        if (portfolio, exchange) in self.cash_value:  # Если есть значения по подписке
+                            _, v = self.cash_value[portfolio, exchange]  # Получаем значение из подписки
+                            value += round(v, 2)  # Суммируем, округляем до копеек
                         if value:  # Если есть баланс
                             break  # То на др. биржах не смотрим, т.к. балансы на них дублируются
                     self.value = value  # Баланс счета по каждому портфелю на каждой бирже
@@ -131,8 +137,9 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
     def stop(self):
         super(ALBroker, self).stop()
         self.unsubscribe()  # Отменяем все подписки
-        self.store.apProvider.OnOrder = self.store.apProvider.DefaultHandler  # Обработка заявок
+        self.store.apProvider.OnPosition = self.store.apProvider.DefaultHandler  # Обработка позиций
         self.store.apProvider.OnTrade = self.store.apProvider.DefaultHandler  # Обработка сделок
+        self.store.apProvider.OnOrder = self.store.apProvider.DefaultHandler  # Обработка заявок
         self.store.BrokerCls = None  # Удаляем класс брокера из хранилища
 
     # Функции
@@ -143,8 +150,9 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         :param str portfolio: Клиентский портфель
         :param str exchange: Биржа 'MOEX' или 'SPBX'
         """
-        self.subscriptions[('orders', portfolio, exchange)] = self.store.apProvider.OrdersGetAndSubscribeV2(portfolio, exchange)  # Подписка на заявки
-        self.subscriptions[('trades', portfolio, exchange)] = self.store.apProvider.TradesGetAndSubscribeV2(portfolio, exchange)  # Подписка на сделки
+        self.subscriptions[('positions', portfolio, exchange)] = self.store.apProvider.PositionsGetAndSubscribeV2(portfolio, exchange)  # Подписка на позиции (получение свободных средств и баланса счета)
+        self.subscriptions[('trades', portfolio, exchange)] = self.store.apProvider.TradesGetAndSubscribeV2(portfolio, exchange)  # Подписка на сделки (изменение статусов заявок)
+        self.subscriptions[('orders', portfolio, exchange)] = self.store.apProvider.OrdersGetAndSubscribeV2(portfolio, exchange)  # Подписка на заявки (снятие заявок с биржи)
 
     def unsubscribe(self):
         """Отмена всех подписок"""
@@ -171,8 +179,8 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                 print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отменена. Портфель не найден')
                 order.reject(self)  # то отменяем заявку (статус Order.Rejected)
                 return order  # Возвращаем отмененную заявку
-        if ('orders', order.info['portfolio'], exchange) not in self.subscriptions:  # Если подписка на заявки для портфеля и биржи нет в подписках
-            self.subscribe(self.p.portfolio, self.p.exchange)  # то подписываемся на события портфеля и биржи
+        if ('orders', order.info['portfolio'], exchange) not in self.subscriptions:  # Если подписка на заявки портфеля/биржи нет в подписках
+            self.subscribe(self.p.portfolio, self.p.exchange)  # то подписываемся на события портфеля/биржи
         si = self.store.get_symbol_info(exchange, symbol)  # Информация о тикере
         if not si:  # Если тикер не найден
             print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отменена. Тикер не найден')
@@ -253,6 +261,18 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         if order.status != Order.Accepted:  # Если новая заявка не зарегистрирована
             self.store.oco_pc_check(order)  # то проверяем связанные и родительскую/дочерние заявки
         return order  # Возвращаем заявку
+
+    def on_position(self, response):
+        """Обработка денежных позиций"""
+        data = response['data']  # Данные позиции
+        if not data['isCurrency']:  # Если пришли не валютные остатки (деньги)
+            return  # то выходим, дальше не продолжаем
+        cash = round(data['volume'], 2)  # Свободные средства округляем до копеек
+        portfolio = data['portfolio']  # Портфель
+        exchange = data['exchange']  # Биржа
+        money = self.store.apProvider.GetMoney(portfolio, exchange)  # Денежная позиция
+        value = round(money['portfolio'], 2)  # Суммируем, округляем до копеек
+        self.cash_value[(portfolio, exchange)] = (cash, value)  # Свободные средства/баланс счета по портфелю/бирже
 
     def on_order(self, response):
         """Обработка заявок на отмену (canceled). Статусы working, filled, rejected обрабатываются в place_order и on_trade"""
