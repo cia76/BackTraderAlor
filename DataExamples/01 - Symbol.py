@@ -10,7 +10,7 @@ if __name__ == '__main__':  # Точка входа при запуске это
     symbol = 'MOEX.SBER'  # Тикер в формате <Код биржи MOEX/SPBX>.<Код тикера>
     # symbol = 'MOEX.Si-3.23'  # Для фьючерсов: <Код тикера>-<Месяц экспирации: 3, 6, 9, 12>.<Две последнии цифры года>
     # symbol = 'MOEX.SiH3'  # или <Код тикера><Месяц экспирации: 3-H, 6-M, 9-U, 12-Z><Последняя цифра года>
-    # data = ALData(dataname=symbol, timeframe=TimeFrame.Days, Host='<Ваш IP адрес>')  # Можно вызывать данные напрямую (не рекомендуется)
+    # data = ALData(dataname=symbol, timeframe=TimeFrame.Days)  # Можно вызывать данные напрямую (не рекомендуется)
     store = ALStore(UserName=Config.UserName, RefreshToken=Config.RefreshToken)  # Хранилище Alor
     cerebro = Cerebro(stdstats=False)  # Инициируем "движок" BackTrader. Стандартная статистика сделок и кривой доходности не нужна
     today = date.today()  # Сегодняшняя дата без времени
