@@ -89,6 +89,8 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                     for exchange in exchanges:  # Пробегаемся по всем биржам
                         money = self.store.apProvider.GetMoney(portfolio, exchange)  # Денежная позиция
                         value += money['portfolio']  # Суммируем, округляем до копеек
+                        if value:  # Если есть баланс
+                            break  # То на др. биржах не смотрим, т.к. балансы на них дублируются
                     self.value = value  # Баланс счета по каждому портфелю на каждой бирже
         return self.value  # Возвращаем последний известный баланс счета
 
