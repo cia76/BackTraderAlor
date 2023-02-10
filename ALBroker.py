@@ -16,7 +16,6 @@ class MetaALBroker(BrokerBase.__class__):
 class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
     """Брокер Alor"""
     # TODO Сделать обертку для поддержки множества брокеров
-    # TODO Сделать пример постановки заявок по разным портфелям
     # Обсуждение решения: https://community.backtrader.com/topic/1165/does-backtrader-support-multiple-brokers
     # Пример решения: https://github.com/JacobHanouna/backtrader/blob/ccxt_multi_broker/backtrader/brokers/ccxtmultibroker.py
 
@@ -62,6 +61,8 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                 for exchange in exchanges:  # Пробегаемся по всем заданным биржам
                     money = self.store.apProvider.GetMoney(portfolio, exchange)  # Денежная позиция
                     cash += round(money['cash'], 2)  # Суммируем, округляем до копеек
+                    if cash:  # Если есть свободные средства
+                        break  # То на др. биржах не смотрим, т.к. свободные средства на них дублируются
             self.cash = cash  # Свободные средства по каждому портфелю на каждой бирже
         return self.cash
 
@@ -88,7 +89,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                 for portfolio in portfolios:  # Пробегаемся по всем портфелям
                     for exchange in exchanges:  # Пробегаемся по всем биржам
                         money = self.store.apProvider.GetMoney(portfolio, exchange)  # Денежная позиция
-                        value += money['portfolio']  # Суммируем, округляем до копеек
+                        value += round(money['portfolio'], 2)  # Суммируем, округляем до копеек
                         if value:  # Если есть баланс
                             break  # То на др. биржах не смотрим, т.к. балансы на них дублируются
                     self.value = value  # Баланс счета по каждому портфелю на каждой бирже
