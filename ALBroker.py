@@ -33,10 +33,10 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         self.notifs = collections.deque()  # Очередь уведомлений брокера о заявках
         self.subscriptions = {}  # Справочник кодов подписки
         self.portfolios = self.store.apProvider.GetPortfolios()  # Портфели: Фондовый рынок / Фьючерсы и опционы / Валютный рынок
-        self.portfolios_accounts = []  # Список кодов портфелей/счетов
+        self.portfolios_accounts = {}  # Спправочник кодов портфелей/счетов
         for p in self.portfolios:  # Пробегаемся по всем портфелям
             portfolio = self.portfolios[p][0]  # Портфель
-            self.portfolios_accounts.append({portfolio['portfolio']: portfolio['tks']})  # Добавляем код портфеля/счета в список
+            self.portfolios_accounts[portfolio['portfolio']] = portfolio['tks']  # Добавляем код портфеля/счета в список
         self.startingcash = self.cash = 0  # Стартовые и текущие свободные средства по счету
         self.startingvalue = self.value = 0  # Стартовый и текущий баланс счета
 
