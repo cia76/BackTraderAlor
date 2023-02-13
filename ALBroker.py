@@ -257,7 +257,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             order.accept(self)  # Заявка принята на бирже (Order.Accepted)
         self.store.orders[order.ref] = order  # Сохраняем в списке заявок, отправленных на биржу
         order_no = response['orderNumber']  # Номер заявки на бирже
-        self.store.order_nums[order_no] = order.ref  # Сохраняем номер заявки на бирже
+        self.store.order_nums[order.ref] = order_no  # Сохраняем номер заявки на бирже
         if order.status != Order.Accepted:  # Если новая заявка не зарегистрирована
             self.store.oco_pc_check(order)  # то проверяем связанные и родительскую/дочерние заявки
         return order  # Возвращаем заявку
@@ -278,22 +278,22 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         """Обработка заявок на отмену (canceled). Статусы working, filled, rejected обрабатываются в place_order и on_trade"""
         data = response['data']  # Данные заявки
         order_no = data['id']  # Номер заявки из сделки
-        if order_no not in self.store.order_nums:  # Если заявки нет в BT (не из автоторговли)
+        order_ref = self.store.get_order_ref(order_no)  # Номер заявки BackTrader
+        if not order_ref:  # Если заявки нет в BackTrader (не из автоторговли)
             return  # то выходим, дальше не продолжаем
-        order_ref = self.store.order_nums[order_no]  # По номеру заявки из сделки получаем номер заявки в BT
         order: Order = self.store.orders[order_ref]  # Получаем заявку
-        if data['status'] == 'canceled':  # Если заявка отменена в BT, руками, на бирже
+        if data['status'] == 'canceled':  # Если заявка отменена в BackTrader, руками, на бирже
             order.cancel()  # Отменяем существующую заявку (Order.Canceled)
             self.notifs.append(order.clone())  # Уведомляем брокера бо отмене заявки
-            self.store.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
+            self.store.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки (Canceled)
 
     def on_trade(self, response):
         """Обработка сделок"""
         data = response['data']  # Данные сделки
         order_no = data['orderno']  # Номер заявки из сделки
-        if order_no not in self.store.order_nums:  # Если заявки нет в BT (не из автоторговли)
+        order_ref = self.store.get_order_ref(order_no)  # Номер заявки BackTrader
+        if not order_ref:  # Если заявки нет в BackTrader (не из автоторговли)
             return  # то выходим, дальше не продолжаем
-        order_ref = self.store.order_nums[order_no]  # По номеру заявки из сделки получаем номер заявки в BT
         order = self.store.orders[order_ref]  # Получаем заявку
         size = data['filledQtyUnits']  # Кол-во в штуках
         if data['side'] == 'sell':  # Если сделка на продажу
