@@ -284,6 +284,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         order: Order = self.store.orders[order_ref]  # Получаем заявку
         if data['status'] == 'canceled':  # Если заявка отменена в BT, руками, на бирже
             order.cancel()  # Отменяем существующую заявку (Order.Canceled)
+            self.notifs.append(order.clone())  # Уведомляем брокера бо отмене заявки
 
     def on_trade(self, response):
         """Обработка сделок"""
