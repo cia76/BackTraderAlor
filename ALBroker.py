@@ -82,7 +82,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                         position = self.store.apProvider.GetPosition(portfolio, exchange, symbol)  # Пробуем получить позицию
                         if not position:  # Если не получили позицию
                             continue  # то переходим к следующему портфелю, дальше не продолжаем
-                        si = self.store.apProvider.get_symbol_info(exchange, symbol)  # Информация о тикере
+                        si = self.store.get_symbol_info(exchange, symbol)  # Информация о тикере
                         if not si:  # Если тикер не найден
                             continue  # то переходим к следующему портфелю, дальше не продолжаем
                         value += round(position['volume'] + position['unrealisedPl'] * si['priceMultiplier'], 2)  # Текущая стоимость позиции по тикеру
