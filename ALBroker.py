@@ -47,8 +47,6 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         self.store.apProvider.OnOrder = self.on_order  # Обработка заявок
         if self.p.use_positions:  # Если нужно при запуске брокера получить текущие позиции на бирже
             self.store.get_positions()  # То получаем их
-        if self.p.portfolio and self.p.exchange:  # Если заданы портфель и биржа
-            self.subscribe(self.p.portfolio, self.p.exchange)  # то подписываемся на их события
         self.startingcash = self.cash = self.getcash()  # Стартовые и текущие свободные средства по счету
         self.startingvalue = self.value = self.getvalue()  # Стартовый и текущий баланс счета
 
@@ -62,9 +60,12 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                 for exchange in exchanges:  # Пробегаемся по всем заданным биржам
                     if ('positions', portfolio, exchange) not in self.subscriptions:  # Если подписки на позиции для портфеля/биржи нет в подписках
                         self.subscribe(portfolio, exchange)  # то подписываемся на события портфеля/биржи
-                    if (portfolio, exchange) in self.cash_value:  # Если есть значения по подписке
-                        c, _ = self.cash_value[(portfolio, exchange)]  # Получаем значение из подписки
-                        cash += round(c, 2)  # Суммируем, округляем до копеек
+                        m = self.store.apProvider.GetMoney(self.p.portfolio, self.p.exchange)  # Денежная позиция
+                        c = round(m['cash'], 2)  # Округляем до копеек
+                        v = round(m['portfolio'] - m['cash'], 2)  # Вычитаем, округляем до копеек
+                        self.cash_value[(portfolio, exchange)] = (c, v)  # Свободные средства/баланс счета по портфелю/бирже
+                    c, _ = self.cash_value[(portfolio, exchange)]  # Получаем значение из подписки
+                    cash += round(c, 2)  # Суммируем, округляем до копеек
                     if cash:  # Если есть свободные средства
                         break  # То на др. биржах не смотрим, т.к. свободные средства на них дублируются
             self.cash = cash  # Свободные средства по каждому портфелю на каждой бирже
@@ -91,11 +92,8 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                 exchanges = (self.p.exchange,) if self.p.exchange else self.store.apProvider.exchanges  # Указанная биржа или все
                 for portfolio in portfolios:  # Пробегаемся по всем портфелям
                     for exchange in exchanges:  # Пробегаемся по всем биржам
-                        if ('positions', portfolio, exchange) not in self.subscriptions:  # Если подписки на позиции для портфеля/биржи нет в подписках
-                            self.subscribe(portfolio, exchange)  # то подписываемся на события портфеля/биржи
-                        if (portfolio, exchange) in self.cash_value:  # Если есть значения по подписке
-                            _, v = self.cash_value[portfolio, exchange]  # Получаем значение из подписки
-                            value += round(v, 2)  # Суммируем, округляем до копеек
+                        _, v = self.cash_value[portfolio, exchange]  # Получаем значение из подписки
+                        value += round(v, 2)  # Суммируем, округляем до копеек
                         if value:  # Если есть баланс
                             break  # То на др. биржах не смотрим, т.к. балансы на них дублируются
                     self.value = value  # Баланс счета по каждому портфелю на каждой бирже
