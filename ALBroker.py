@@ -60,7 +60,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                 for exchange in exchanges:  # Пробегаемся по всем заданным биржам
                     if ('positions', portfolio, exchange) not in self.subscriptions:  # Если подписки на позиции для портфеля/биржи нет в подписках
                         self.subscribe(portfolio, exchange)  # то подписываемся на события портфеля/биржи
-                        m = self.store.apProvider.GetMoney(self.p.portfolio, self.p.exchange)  # Денежная позиция
+                        m = self.store.apProvider.GetMoney(portfolio, exchange)  # Денежная позиция
                         c = round(m['cash'], 2)  # Округляем до копеек
                         v = round(m['portfolio'] - m['cash'], 2)  # Вычитаем, округляем до копеек
                         self.cash_value[(portfolio, exchange)] = (c, v)  # Свободные средства/баланс счета по портфелю/бирже
