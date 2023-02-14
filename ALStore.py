@@ -51,7 +51,7 @@ class ALStore(with_metaclass(MetaSingleton, object)):
         self.newBars = []  # Новые бары по подписке из Alor
         self.positions = collections.defaultdict(Position)  # Список позиций
         self.orders = collections.OrderedDict()  # Список заявок, отправленных на биржу
-        self.order_nums = {}  # Словарь заявок на бирже. Индекс - номер заявки в BackTrader, значение - номер заявки на бирже
+        self.order_numbers = {}  # Словарь заявок на бирже. Индекс - номер заявки в BackTrader (order.ref). Значение - номер заявки на бирже (orderNumber)
         self.pcs = collections.defaultdict(collections.deque)  # Очередь всех родительских/дочерних заявок (Parent - Children)
         self.ocos = {}  # Список связанных заявок (One Cancel Others)
 
@@ -166,21 +166,21 @@ class ALStore(with_metaclass(MetaSingleton, object)):
         :param Order order_no: Номер заявки на бирже
         :return: Номер заявки BackTrader
         """
-        for ref, order_number in self.order_nums.items():  # Пробегаемся по всем заявкам на бирже
+        for ref, order_number in self.order_numbers.items():  # Пробегаемся по всем заявкам на бирже
             if order_number == order_no:  # Если значение совпадает с номером заявки на бирже
-                return order_number  # то возвращаем номер заявки BackTrader
+                return ref  # то возвращаем номер заявки BackTrader
         return None  # иначе, ничего не найдено
 
     def cancel_order(self, order):
         """Отмена заявки"""
         portfolio = order.info['portfolio']  # Портфель
-        order_no = self.order_nums[order.ref]  # Номер заявки на бирже
+        order_number = self.order_numbers[order.ref]  # Номер заявки на бирже
         if order.exectype in (Order.Market, Order.Limit):  # Для рыночных и лимитных заявок
             exchange = order.info['exchange']  # Код биржи
-            self.apProvider.DeleteOrder(portfolio, exchange, order_no, False)  # Снятие заявки
+            self.apProvider.DeleteOrder(portfolio, exchange, order_number, False)  # Снятие заявки
         else:  # Для стоп заявок
             server = order.info['server']  # Торговый сервер
-            self.apProvider.DeleteStopOrder(server, portfolio, order_no, True)  # Снятие стоп заявки
+            self.apProvider.DeleteStopOrder(server, portfolio, order_number, True)  # Снятие стоп заявки
         order.cancel()  # Отменяем заявку
         return order  # Возвращаем заявку
 

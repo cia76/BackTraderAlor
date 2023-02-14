@@ -256,8 +256,8 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         else:  # Ошибки нет
             order.accept(self)  # Заявка принята на бирже (Order.Accepted)
         self.store.orders[order.ref] = order  # Сохраняем в списке заявок, отправленных на биржу
-        order_no = response['orderNumber']  # Номер заявки на бирже
-        self.store.order_nums[order.ref] = order_no  # Сохраняем номер заявки на бирже
+        order_number = response['orderNumber']  # Номер заявки на бирже
+        self.store.order_numbers[order.ref] = order_number  # Сохраняем номер заявки на бирже
         if order.status != Order.Accepted:  # Если новая заявка не зарегистрирована
             self.store.oco_pc_check(order)  # то проверяем связанные и родительскую/дочерние заявки
         return order  # Возвращаем заявку
