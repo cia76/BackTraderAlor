@@ -39,6 +39,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         self.cash_value = {}  # Справочник свободных средств/баланса счета по портфелю/бирже
         self.startingcash = self.cash = 0  # Стартовые и текущие свободные средства по счету
         self.startingvalue = self.value = 0  # Стартовый и текущий баланс счета
+        self.notsubscribed_cash_value = True  # Флаг, что еще не получили данные по балансу с подписки
 
     def start(self):
         super(ALBroker, self).start()
@@ -52,6 +53,16 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         self.startingcash = self.cash = self.getcash()  # Стартовые и текущие свободные средства по счету
         self.startingvalue = self.value = self.getvalue()  # Стартовый и текущий баланс счета
 
+    def getstartcashvalue(self, portfolio, exchange, ineedcash=True):
+        """Свободные средства по счету - проверка на старте, до подписки"""
+        money = self.store.apProvider.GetMoney(portfolio, exchange)  # Денежная позиция
+        cash = round(money['cash'], 2)  # Округляем до копеек
+        value = round(money['portfolio'] - money['cash'], 2)  # Вычитаем, округляем до копеек
+        if ineedcash:
+            return cash
+        else:
+            return value
+
     def getcash(self):
         """Свободные средства по счету"""
         if self.store.BrokerCls:  # Если брокер есть в хранилище
@@ -62,7 +73,10 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                 for exchange in exchanges:  # Пробегаемся по всем заданным биржам
                     if ('positions', portfolio, exchange) not in self.subscriptions:  # Если подписки на позиции для портфеля/биржи нет в подписках
                         self.subscribe(portfolio, exchange)  # то подписываемся на события портфеля/биржи
+                        cash = self.getstartcashvalue(portfolio, exchange, ineedcash=True)  # и считаем сколько денег
+                    if self.notsubscribed_cash_value: cash = self.getstartcashvalue(portfolio, exchange, ineedcash=True)  # если подписка всё ещё ничего не вернула - то считываем напрямую
                     if (portfolio, exchange) in self.cash_value:  # Если есть значения по подписке
+                        self.notsubscribed_cash_value = False  # запрещаем считывать напрямую
                         c, _ = self.cash_value[(portfolio, exchange)]  # Получаем значение из подписки
                         cash += round(c, 2)  # Суммируем, округляем до копеек
                     if cash:  # Если есть свободные средства
@@ -93,7 +107,10 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                     for exchange in exchanges:  # Пробегаемся по всем биржам
                         if ('positions', portfolio, exchange) not in self.subscriptions:  # Если подписки на позиции для портфеля/биржи нет в подписках
                             self.subscribe(portfolio, exchange)  # то подписываемся на события портфеля/биржи
+                            value = self.getstartcashvalue(portfolio, exchange, ineedcash=False)  # и считаем сколько денег
+                        if self.notsubscribed_cash_value: value = self.getstartcashvalue(portfolio, exchange, ineedcash=False)  # если подписка всё ещё ничего не вернула - то считываем напрямую
                         if (portfolio, exchange) in self.cash_value:  # Если есть значения по подписке
+                            self.notsubscribed_cash_value = False  # запрещаем считывать напрямую
                             _, v = self.cash_value[portfolio, exchange]  # Получаем значение из подписки
                             value += round(v, 2)  # Суммируем, округляем до копеек
                         if value:  # Если есть баланс
