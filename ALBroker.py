@@ -292,7 +292,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         order = self.store.get_order(order_no)  # Номер заявки BackTrader
         if not order:  # Если заявки нет в BackTrader (не из автоторговли)
             return  # то выходим, дальше не продолжаем
-        size = data['filledQtyUnits']  # Кол-во в штуках
+        size = data['qtyUnits']  # Кол-во в штуках
         if data['side'] == 'sell':  # Если сделка на продажу
             size *= -1  # то кол-во ставим отрицательным
         price = data['price'] / size  # Цена исполнения за штуку
