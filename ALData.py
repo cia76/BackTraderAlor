@@ -85,6 +85,8 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
             new_bar = new_bars[0]  # Берем первый бар из хранилища
             self.store.newBars.remove(new_bar)  # Убираем его из хранилища
             bar = new_bar['data']  # С данными этого бара будем работать
+            if not self.is_bar_valid(bar):  # Если бар не соответствует всем условиям выборки
+                return None  # то пропускаем бар, будем заходить еще
             dt_open = self.get_bar_open_date_time(bar)  # Дата/время открытия бара
             dt_next_bar_close = self.get_bar_close_date_time(dt_open, 2)  # Биржевое время закрытия следующего бара
             time_market_now = self.get_alor_date_time_now()  # Текущее биржевое время из Alor
