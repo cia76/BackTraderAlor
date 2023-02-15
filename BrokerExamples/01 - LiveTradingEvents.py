@@ -1,4 +1,4 @@
-from datetime import datetime, time
+from datetime import datetime
 import backtrader as bt
 from BackTraderAlor.ALStore import ALStore  # Хранилище Alor
 from AlorPy.Config import Config  # Файл конфигурации
@@ -25,7 +25,7 @@ class LiveTradingEvents(bt.Strategy):
     def next(self):
         """Получение следующего исторического/нового бара"""
         for data in self.datas:  # Пробегаемся по всем запрошенным барам
-            self.log(f'{data.p.dataname} Open={data.open[0]:.2f}, High={data.high[0]:.2f}, Low={data.low[0]:.2f}, Close={data.close[0]:.2f}, Volume={data.volume[0]:.0f}')
+            self.log(f'{data._name} Open={data.open[0]:.2f}, High={data.high[0]:.2f}, Low={data.low[0]:.2f}, Close={data.close[0]:.2f}, Volume={data.volume[0]:.0f}')
         if self.isLive:  # Если в режиме реальной торговли
             self.log(f'Свободные средства: {self.broker.getcash()}, Баланс: {self.broker.getvalue()}')
 
@@ -57,15 +57,12 @@ class LiveTradingEvents(bt.Strategy):
 
 if __name__ == '__main__':  # Точка входа при запуске этого скрипта
     symbol = 'MOEX.SBER'  # Тикер
-    # symbol = 'MOEX.SiH3'  # Для фьючерсов: <Код тикера><Месяц экспирации: 3-H, 6-M, 9-U, 12-Z><Последняя цифра года>
-    store = ALStore(UserName=Config.UserName, RefreshToken=Config.RefreshToken)  # Хранилище Alor
+    # symbol = 'MOEX.SI-3.23'  # Для фьючерсов: <Код тикера заглавными буквами>-<Месяц экспирации: 3, 6, 9, 12>.<Последние 2 цифры года>
     cerebro = bt.Cerebro(stdstats=False)  # Инициируем "движок" BackTrader. Стандартная статистика сделок и кривой доходности не нужна
+    store = ALStore(UserName=Config.UserName, RefreshToken=Config.RefreshToken)  # Хранилище Alor
     broker = store.getbroker(use_positions=False)  # Брокер Alor
     cerebro.setbroker(broker)  # Устанавливаем брокера
-    data = store.getdata(dataname=symbol, timeframe=bt.TimeFrame.Minutes, compression=1,
-                         fromdate=datetime(2023, 2, 6), sessionstart=time(7, 0), LiveBars=True)  # Исторические и новые минутные бары за все время
+    data = store.getdata(dataname=symbol, timeframe=bt.TimeFrame.Minutes, compression=1, fromdate=datetime(2023, 2, 13), LiveBars=True)  # Исторические и новые минутные бары за все время
     cerebro.adddata(data)  # Добавляем данные
-    cerebro.addsizer(bt.sizers.FixedSize, stake=10)  # Кол-во акций для покупки/продажи
-    # cerebro.addsizer(bt.sizers.FixedSize, stake=1000)  # Кол-во фьючерсов для покупки/продажи
     cerebro.addstrategy(LiveTradingEvents)  # Добавляем торговую систему
     cerebro.run()  # Запуск торговой системы

@@ -1,4 +1,4 @@
-from datetime import datetime, time
+from datetime import datetime
 import backtrader as bt
 from BackTraderAlor.ALStore import ALStore  # Хранилище Alor
 from AlorPy.Config import Config  # Файл конфигурации
@@ -70,15 +70,14 @@ if __name__ == '__main__':  # Точка входа при запуске это
     portfolio = Config.PortfolioStocks  # Портфель фондового рынка
     symbol = 'MOEX.SBER'  # Тикер
     # portfolio = Config.PortfolioFutures  # Портфель срочного рынка
-    # symbol = 'MOEX.SiH3'  # Для фьючерсов: <Код тикера><Месяц экспирации: 3-H, 6-M, 9-U, 12-Z><Последняя цифра года>
-    store = ALStore(UserName=Config.UserName, RefreshToken=Config.RefreshToken)  # Хранилище Alor
+    # symbol = 'MOEX.SI-3.23'  # Для фьючерсов: <Код тикера заглавными буквами>-<Месяц экспирации: 3, 6, 9, 12>.<Последние 2 цифры года>
     cerebro = bt.Cerebro(stdstats=False)  # Инициируем "движок" BackTrader. Стандартная статистика сделок и кривой доходности не нужна
+    store = ALStore(UserName=Config.UserName, RefreshToken=Config.RefreshToken)  # Хранилище Alor
     broker = store.getbroker(use_positions=False, portfolio=portfolio, exchange=exchange)  # Брокер Alor
     cerebro.setbroker(broker)  # Устанавливаем брокера
-    data = store.getdata(dataname=symbol, timeframe=bt.TimeFrame.Minutes, compression=1,
-                         fromdate=datetime(2023, 2, 6), sessionstart=time(7, 0), LiveBars=True)  # Исторические и новые минутные бары за все время
+    data = store.getdata(dataname=symbol, timeframe=bt.TimeFrame.Minutes, compression=1, fromdate=datetime(2023, 2, 13), LiveBars=True)  # Исторические и новые минутные бары за все время
     cerebro.adddata(data)  # Добавляем данные
     cerebro.addsizer(bt.sizers.FixedSize, stake=10)  # Кол-во акций для покупки/продажи
-    # cerebro.addsizer(bt.sizers.FixedSize, stake=1000)  # Кол-во фьючерсов для покупки/продажи
+    # cerebro.addsizer(bt.sizers.FixedSize, stake=1)  # Кол-во фьючерсов для покупки/продажи
     cerebro.addstrategy(LimitCancel, LimitPct=1)  # Добавляем торговую систему с лимитным входом в n%
     cerebro.run()  # Запуск торговой системы

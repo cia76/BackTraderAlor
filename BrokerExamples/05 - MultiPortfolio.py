@@ -39,7 +39,7 @@ if __name__ == '__main__':  # Точка входа при запуске это
     cerebro = bt.Cerebro(stdstats=False)  # Инициируем "движок" BackTrader. Стандартная статистика сделок и кривой доходности не нужна
     broker = store.getbroker(use_positions=False)  # Брокер Alor без привязки к портфелю/бирже
     cerebro.setbroker(broker)  # Устанавливаем брокера
-    data = store.getdata(dataname=symbol, timeframe=bt.TimeFrame.Minutes, compression=1, fromdate=datetime(2023, 2, 10), LiveBars=False)  # Исторические бары
+    data = store.getdata(dataname=symbol, timeframe=bt.TimeFrame.Minutes, compression=1, fromdate=datetime(2023, 2, 13), LiveBars=True)  # Исторические и новые минутные бары за все время
     cerebro.adddata(data)  # Добавляем данные
     cerebro.addstrategy(MultiPortfolio, portfolio=Config.PortfolioStocks)  # Добавляем торговую систему с портфелем
     cerebro.run()  # Запуск торговой системы
