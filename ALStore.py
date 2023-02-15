@@ -51,7 +51,6 @@ class ALStore(with_metaclass(MetaSingleton, object)):
         self.newBars = []  # Новые бары по подписке из Alor
         self.positions = collections.defaultdict(Position)  # Список позиций
         self.orders = collections.OrderedDict()  # Список заявок, отправленных на биржу
-        self.order_numbers = {}  # Словарь заявок на бирже. Индекс - номер заявки в BackTrader (order.ref). Значение - номер заявки на бирже (orderNumber)
         self.pcs = collections.defaultdict(collections.deque)  # Очередь всех родительских/дочерних заявок (Parent - Children)
         self.ocos = {}  # Список связанных заявок (One Cancel Others)
 
@@ -160,40 +159,42 @@ class ALStore(with_metaclass(MetaSingleton, object)):
                     price = round(position['volume'] / size, 2)  # Цена входа
                     self.positions[dataname] = Position(size, price)  # Сохраняем в списке открытых позиций
 
-    def get_order_ref(self, order_no):
-        """Номер заявки BackTrader по номеру заявки на бирже
+    def get_order(self, order_number):
+        """Заявка BackTrader по номеру заявки на бирже
 
-        :param Order order_no: Номер заявки на бирже
-        :return: Номер заявки BackTrader
+        :param Order order_number: Номер заявки на бирже
+        :return: Заявка BackTrader
         """
-        for ref, order_number in self.order_numbers.items():  # Пробегаемся по всем заявкам на бирже
-            if order_number == order_no:  # Если значение совпадает с номером заявки на бирже
-                return ref  # то возвращаем номер заявки BackTrader
+        for order in self.orders.values():  # Пробегаемся по всем заявкам на бирже
+            if order.info['order_number'] == order_number:  # Если значение совпадает с номером заявки на бирже
+                return order  # то возвращаем заявкe BackTrader
         return None  # иначе, ничего не найдено
 
     def cancel_order(self, order):
         """Отмена заявки"""
+        if not order.alive():  # Если заявка уже была завершена
+            return  # то выходим, дальше не продолжаем
         portfolio = order.info['portfolio']  # Портфель
-        order_number = self.order_numbers[order.ref]  # Номер заявки на бирже
+        order_number = order.info['order_number']  # Номер заявки на бирже
         if order.exectype in (Order.Market, Order.Limit):  # Для рыночных и лимитных заявок
             exchange = order.info['exchange']  # Код биржи
             self.apProvider.DeleteOrder(portfolio, exchange, order_number, False)  # Снятие заявки
         else:  # Для стоп заявок
             server = order.info['server']  # Торговый сервер
             self.apProvider.DeleteStopOrder(server, portfolio, order_number, True)  # Снятие стоп заявки
-        order.cancel()  # Отменяем заявку
-        return order  # Возвращаем заявку
+        return order  # В список уведомлений ничего не добавляем. Ждем события on_order
 
     def oco_pc_check(self, order):
         """
         Проверка связанных заявок
         Проверка родительской/дочерних заявок
         """
-        for order_ref, oco_ref in self.ocos.items():  # Пробегаемся по списку связанных заявок
+        ocos = self.ocos.copy()  # Пока ищем связанные заявки, они могут измениться. Поэтому, работаем с копией
+        for order_ref, oco_ref in ocos.items():  # Пробегаемся по списку связанных заявок
             if oco_ref == order.ref:  # Если в заявке номер эта заявка указана как связанная (по номеру транзакции)
                 self.cancel_order(self.orders[order_ref])  # то отменяем заявку
-        if order.ref in self.ocos.keys():  # Если у этой заявки указана связанная заявка
-            oco_ref = self.ocos[order.ref]  # то получаем номер транзакции связанной заявки
+        if order.ref in ocos.keys():  # Если у этой заявки указана связанная заявка
+            oco_ref = ocos[order.ref]  # то получаем номер транзакции связанной заявки
             self.cancel_order(self.orders[oco_ref])  # отменяем связанную заявку
 
         if not order.parent and not order.transmit and order.status == Order.Completed:  # Если исполнена родительская заявка
