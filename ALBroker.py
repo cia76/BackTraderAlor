@@ -1,4 +1,5 @@
 import collections
+from datetime import datetime
 
 from backtrader import BrokerBase
 from backtrader.utils.py3 import with_metaclass
@@ -51,7 +52,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         self.startingvalue = self.value = self.getvalue()  # Стартовый и текущий баланс счета
 
     def getcash(self):
-        """Свободные средства по счету"""
+        """Свободные средства по портфелю/бирже, по всем счетам"""
         if self.store.BrokerCls:  # Если брокер есть в хранилище
             portfolios = (self.p.portfolio,) if self.p.portfolio else self.portfolios_accounts  # Указанный портфель или все
             exchanges = (self.p.exchange,) if self.p.exchange else self.store.apProvider.exchanges  # Указанная биржа или все
@@ -72,7 +73,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         return self.cash
 
     def getvalue(self, datas=None):
-        """Баланс счета"""
+        """Стоимость позиции, позиций по портфелю/бирже, всех позиций"""
         if self.store.BrokerCls:  # Если брокер есть в хранилище
             portfolios = (self.p.portfolio,) if self.p.portfolio else self.portfolios_accounts  # Указанный портфель или все
             value = 0  # Будем набирать баланс счета
@@ -92,6 +93,12 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                 exchanges = (self.p.exchange,) if self.p.exchange else self.store.apProvider.exchanges  # Указанная биржа или все
                 for portfolio in portfolios:  # Пробегаемся по всем портфелям
                     for exchange in exchanges:  # Пробегаемся по всем биржам
+                        if ('positions', portfolio, exchange) not in self.subscriptions:  # Если подписки на позиции для портфеля/биржи нет в подписках
+                            self.subscribe(portfolio, exchange)  # то подписываемся на события портфеля/биржи
+                            m = self.store.apProvider.GetMoney(portfolio, exchange)  # Денежная позиция
+                            c = round(m['cash'], 2)  # Округляем до копеек
+                            v = round(m['portfolio'] - m['cash'], 2)  # Вычитаем, округляем до копеек
+                            self.cash_value[(portfolio, exchange)] = (c, v)  # Свободные средства/баланс счета по портфелю/бирже
                         _, v = self.cash_value[portfolio, exchange]  # Получаем значение из подписки
                         value += round(v, 2)  # Суммируем, округляем до копеек
                         if value:  # Если есть баланс
@@ -296,7 +303,9 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         if data['side'] == 'sell':  # Если сделка на продажу
             size *= -1  # то кол-во ставим отрицательным
         price = abs(data['price'] / size)  # Цена исполнения за штуку
-        dt = self.store.apProvider.UTCToMskDateTime(data['date'])  # Дата/время сделки по времени биржи (МСК)
+        str_utc = data['date'][0:19]  # Возвращается зн-ие типа: '2023-02-16T09:25:01.4335364Z'. Берем первые 20 символов
+        dt_utc = datetime.strptime(str_utc, '%Y-%m-%dT%H:%M:%S')  # Переводим в дату/время UTC
+        dt = self.store.apProvider.UTCToMskDateTime(dt_utc)  # Дата/время сделки по времени биржи (МСК)
         pos = self.getposition(order.data)  # Получаем позицию по тикеру или нулевую позицию если тикера в списке позиций нет
         psize, pprice, opened, closed = pos.update(size, price)  # Обновляем размер/цену позиции на размер/цену сделки
         order.execute(dt, size, price, closed, 0, 0, opened, 0, 0, 0, 0, psize, pprice)  # Исполняем заявку в BackTrader
