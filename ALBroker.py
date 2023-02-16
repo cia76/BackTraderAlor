@@ -37,7 +37,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         for p in self.portfolios:  # Пробегаемся по всем портфелям
             portfolio = self.portfolios[p][0]  # Портфель
             self.portfolios_accounts[portfolio['portfolio']] = portfolio['tks']  # Добавляем код портфеля/счета в список
-        self.cash_value = {}  # Справочник свободных средств/баланса счета по портфелю/бирже
+        self.cash_value = {}  # Справочник Свободные средства/Стоимость позиций
         self.startingcash = self.cash = 0  # Стартовые и текущие свободные средства по счету
         self.startingvalue = self.value = 0  # Стартовый и текущий баланс счета
 
@@ -64,7 +64,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                         m = self.store.apProvider.GetMoney(portfolio, exchange)  # Денежная позиция
                         c = round(m['cash'], 2)  # Округляем до копеек
                         v = round(m['portfolio'] - m['cash'], 2)  # Вычитаем, округляем до копеек
-                        self.cash_value[(portfolio, exchange)] = (c, v)  # Свободные средства/баланс счета по портфелю/бирже
+                        self.cash_value[(portfolio, exchange)] = (c, v)  # Свободные средства/Стоимость позиций
                     c, _ = self.cash_value[(portfolio, exchange)]  # Получаем значение из подписки
                     cash += round(c, 2)  # Суммируем, округляем до копеек
                     if cash:  # Если есть свободные средства
@@ -98,7 +98,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                             m = self.store.apProvider.GetMoney(portfolio, exchange)  # Денежная позиция
                             c = round(m['cash'], 2)  # Округляем до копеек
                             v = round(m['portfolio'] - m['cash'], 2)  # Вычитаем, округляем до копеек
-                            self.cash_value[(portfolio, exchange)] = (c, v)  # Свободные средства/баланс счета по портфелю/бирже
+                            self.cash_value[(portfolio, exchange)] = (c, v)  # Свободные средства/Стоимость позиций
                         _, v = self.cash_value[portfolio, exchange]  # Получаем значение из подписки
                         value += round(v, 2)  # Суммируем, округляем до копеек
                         if value:  # Если есть баланс
@@ -272,12 +272,12 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         data = response['data']  # Данные позиции
         if not data['isCurrency']:  # Если пришли не валютные остатки (деньги)
             return  # то выходим, дальше не продолжаем
-        cash = round(data['volume'], 2)  # Свободные средства округляем до копеек
+        c = round(data['volume'], 2)  # Свободные средства округляем до копеек
         portfolio = data['portfolio']  # Портфель
         exchange = data['exchange']  # Биржа
-        money = self.store.apProvider.GetMoney(portfolio, exchange)  # Денежная позиция
-        value = round(money['portfolio'], 2)  # Суммируем, округляем до копеек
-        self.cash_value[(portfolio, exchange)] = (cash, value)  # Свободные средства/баланс счета по портфелю/бирже
+        m = self.store.apProvider.GetMoney(portfolio, exchange)  # Денежная позиция
+        v = round(m['portfolio'] - data['volume'], 2)  # Суммируем, округляем до копеек
+        self.cash_value[(portfolio, exchange)] = (c, v)  # Свободные средства/Стоимость позиций
 
     def on_order(self, response):
         """Обработка заявок на отмену (canceled). Статусы working, filled, rejected обрабатываются в place_order и on_trade"""
