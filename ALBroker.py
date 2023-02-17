@@ -205,12 +205,12 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             pcs.append(order)  # добавляем заявку (родительскую или дочернюю)
         if transmit:  # Если обычная заявка или последняя дочерняя заявка
             if not parent:  # Для обычных заявок
-                return self.place_order(order)  # Отправляем заявку на рынок
+                return self.place_order(order)  # Отправляем заявку на биржу
             else:  # Если последняя заявка в цепочке родительской/дочерних заявок
                 self.notifs.append(order.clone())  # Удедомляем брокера о создании новой заявки
-                return self.place_order(order.parent)  # Отправляем родительскую заявку на рынок
+                return self.place_order(order.parent)  # Отправляем родительскую заявку на биржу
         # Если не последняя заявка в цепочке родительской/дочерних заявок (transmit=False)
-        return order  # то возвращаем созданную заявку со статусом Created. На рынок ее пока не ставим
+        return order  # то возвращаем созданную заявку со статусом Created. На биржу ее пока не ставим
 
     def place_order(self, order):
         """Отправка заявки на биржу"""
@@ -221,7 +221,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         symbol = order.info['symbol']  # Код тикера
         si = self.store.get_symbol_info(exchange, symbol)  # Информация о тикере
         quantity = int(order.size / si['lotsize'])  # Размер позиции в лотах
-        server = stop_price = limit_price = None  # Торговый сервер, счет, стоп и лимитную цены получим дальше
+        server = stop_price = None  # Торговый сервер, счет, стоп и лимитную цены получим дальше
         if order.exectype in (Order.Stop, Order.StopLimit):  # Для стоп/стоп-лимитных заявок
             if not order.price:  # Если стоп цена не указана
                 print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отменена. Стоп цена (price) не указана для заявки типа {order.exectype}')
