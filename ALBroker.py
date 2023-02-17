@@ -1,9 +1,9 @@
 import collections
 from datetime import datetime
 
-from backtrader import BrokerBase
+from backtrader import BrokerBase, Order, BuyOrder, SellOrder
+from backtrader.position import Position
 from backtrader.utils.py3 import with_metaclass
-from backtrader import Order, BuyOrder, SellOrder
 
 from BackTraderAlor import ALStore
 
@@ -40,6 +40,8 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             portfolio = self.portfolios[p][0]  # Портфель
             self.portfolios_accounts[portfolio['portfolio']] = portfolio['tks']  # Добавляем код портфеля/счета в список
         self.cash_value = {}  # Справочник Свободные средства/Стоимость позиций
+        self.positions = collections.defaultdict(Position)  # Список позиций
+        self.orders = collections.OrderedDict()  # Список заявок, отправленных на биржу
         self.ocos = {}  # Список связанных заявок (One Cancel Others)
         self.pcs = collections.defaultdict(collections.deque)  # Очередь всех родительских/дочерних заявок (Parent - Children)
 
@@ -49,7 +51,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         self.store.apProvider.OnTrade = self.on_trade  # Обработка сделок
         self.store.apProvider.OnOrder = self.on_order  # Обработка заявок
         if self.p.use_positions:  # Если нужно при запуске брокера получить текущие позиции на бирже
-            self.store.get_positions()  # то получаем их
+            self.get_all_active_positions()  # то получаем их
         self.startingcash = self.cash = self.getcash()  # Стартовые и текущие свободные средства по счету. Подписка на позиции для портфеля/биржи
         self.startingvalue = self.value = self.getvalue()  # Стартовый и текущий баланс счета
 
@@ -167,13 +169,38 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             guid = self.subscriptions[s]  # Получаем код подписки
             self.store.apProvider.Unsubscribe(guid)  # Отменяем подписку
 
-    def create_order(self, owner, data, size, price=None, plimit=None, exectype=None, valid=None, oco=None, parent=None, transmit=True, IsBuy=True, **kwargs):
+    def get_all_active_positions(self):
+        """Все активные позиции по всем клиентски портфелям и биржам"""
+        portfolios = self.store.apProvider.GetPortfolios()  # Портфели: Фондовый рынок / Фьючерсы и опционы / Валютный рынок
+        for p in portfolios:  # Пробегаемся по всем портфелям
+            for exchange in self.store.apProvider.exchanges:  # Пробегаемся по всем биржам
+                positions = self.store.apProvider.GetPositions(p, exchange, True)  # Получаем все позиции без денежной позиции
+                for position in positions:  # Пробегаемся по всем позициям
+                    symbol = position['symbol']  # Тикер
+                    dataname = self.store.exchange_symbol_to_data_name(exchange, symbol)  # Название тикера
+                    si = self.store.get_symbol_info(exchange, symbol)  # Информация о тикере
+                    size = position['qty'] * si['lotsize']  # Кол-во в штуках
+                    price = round(position['volume'] / size, 2)  # Цена входа
+                    self.positions[dataname] = Position(size, price)  # Сохраняем в списке открытых позиций
+
+    def get_order(self, order_number):
+        """Заявка BackTrader по номеру заявки на бирже
+
+        :param Order order_number: Номер заявки на бирже
+        :return: Заявка BackTrader
+        """
+        for order in self.orders.values():  # Пробегаемся по всем заявкам на бирже
+            if order.info['order_number'] == order_number:  # Если значение совпадает с номером заявки на бирже
+                return order  # то возвращаем заявкe BackTrader
+        return None  # иначе, ничего не найдено
+
+    def create_order(self, owner, data, size, price=None, plimit=None, exectype=None, valid=None, oco=None, parent=None, transmit=True, is_buy=True, **kwargs):
         """
         Создание заявки
         Привязка параметров счета и тикера
         Обработка связанных и родительской/дочерних заявок
         """
-        order = BuyOrder(owner=owner, data=data, size=size, price=price, pricelimit=plimit, exectype=exectype, valid=valid, oco=oco, parent=parent, transmit=transmit) if IsBuy \
+        order = BuyOrder(owner=owner, data=data, size=size, price=price, pricelimit=plimit, exectype=exectype, valid=valid, oco=oco, parent=parent, transmit=transmit) if is_buy \
             else SellOrder(owner=owner, data=data, size=size, price=price, pricelimit=plimit, exectype=exectype, valid=valid, oco=oco, parent=parent, transmit=transmit)  # Заявка на покупку/продажу
         order.addcomminfo(self.getcommissioninfo(data))  # По тикеру выставляем комиссии в заявку. Нужно для исполнения заявки в BackTrader
         order.addinfo(**kwargs)  # Передаем в заявку все дополнительные свойства из брокера, в т.ч. portfolio, server
@@ -262,7 +289,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             order.reject(self)  # то отклоняем заявку (Order.Rejected)
         else:  # Ошибки нет
             order.accept(self)  # Заявка принята на бирже (Order.Accepted)
-        self.store.orders[order.ref] = order  # Сохраняем в списке заявок, отправленных на биржу
+        self.orders[order.ref] = order  # Сохраняем в списке заявок, отправленных на биржу
         order_number = response['orderNumber']  # Номер заявки на бирже
         order.addinfo(order_number=order_number)  # Сохраняем номер заявки на бирже
         if order.status != Order.Accepted:  # Если новая заявка не зарегистрирована
@@ -291,10 +318,10 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         ocos = self.ocos.copy()  # Пока ищем связанные заявки, они могут измениться. Поэтому, работаем с копией
         for order_ref, oco_ref in ocos.items():  # Пробегаемся по списку связанных заявок
             if oco_ref == order.ref:  # Если в заявке номер эта заявка указана как связанная (по номеру транзакции)
-                self.cancel_order(self.store.orders[order_ref])  # то отменяем заявку
+                self.cancel_order(self.orders[order_ref])  # то отменяем заявку
         if order.ref in ocos.keys():  # Если у этой заявки указана связанная заявка
             oco_ref = ocos[order.ref]  # то получаем номер транзакции связанной заявки
-            self.cancel_order(self.store.orders[oco_ref])  # отменяем связанную заявку
+            self.cancel_order(self.orders[oco_ref])  # отменяем связанную заявку
 
         if not order.parent and not order.transmit and order.status == Order.Completed:  # Если исполнена родительская заявка
             pcs = self.pcs[order.ref]  # Получаем очередь родительской/дочерних заявок
@@ -325,7 +352,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         if data['status'] != 'canceled':  # Нас интересует только отмена заявки
             return  # иначе, выходим, дальше не продолжаем
         order_number = data['id']  # Номер заявки из сделки
-        order: Order = self.store.get_order(order_number)  # Заявка BackTrader
+        order: Order = self.get_order(order_number)  # Заявка BackTrader
         if not order:  # Если заявки нет в BackTrader (не из автоторговли)
             return  # то выходим, дальше не продолжаем
         order.cancel()  # Отменяем существующую заявку (Order.Canceled)
@@ -336,7 +363,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         """Обработка сделок"""
         data = response['data']  # Данные сделки
         order_no = data['orderno']  # Номер заявки из сделки
-        order = self.store.get_order(order_no)  # Номер заявки BackTrader
+        order = self.get_order(order_no)  # Номер заявки BackTrader
         if not order:  # Если заявки нет в BackTrader (не из автоторговли)
             return  # то выходим, дальше не продолжаем
         size = data['qtyUnits']  # Кол-во в штуках

@@ -2,8 +2,6 @@ import collections
 
 from backtrader.metabase import MetaParams
 from backtrader.utils.py3 import with_metaclass
-from backtrader import Order
-from backtrader.position import Position
 
 from AlorPy import AlorPy
 
@@ -49,8 +47,6 @@ class ALStore(with_metaclass(MetaSingleton, object)):
         self.apProvider = AlorPy(self.p.UserName, self.p.RefreshToken, self.p.Demo)  # Вызываем конструктор AlorPy с именем пользователя и токеном
         self.symbols = {}  # Информация о тикерах
         self.new_bars = []  # Новые бары по всем подпискам на тикеры из Alor
-        self.positions = collections.defaultdict(Position)  # Список позиций
-        self.orders = collections.OrderedDict()  # Список заявок, отправленных на биржу
 
     def start(self):
         self.apProvider.OnNewBar = self.on_new_bar  # Обработчик новых баров по подписке из Alor
@@ -140,33 +136,6 @@ class ALStore(with_metaclass(MetaSingleton, object)):
         if primary_board == 'TQOB':  # Для рынка облигаций
             price *= 10  # цену умножаем на 10
         return price
-
-    # ALBroker
-
-    def get_positions(self):
-        """Все активные позиции по всем клиентски портфелям и биржам"""
-        portfolios = self.apProvider.GetPortfolios()  # Портфели: Фондовый рынок / Фьючерсы и опционы / Валютный рынок
-        for p in portfolios:  # Пробегаемся по всем портфелям
-            for exchange in self.apProvider.exchanges:  # Пробегаемся по всем биржам
-                positions = self.apProvider.GetPositions(p, exchange, True)  # Получаем все позиции без денежной позиции
-                for position in positions:  # Пробегаемся по всем позициям
-                    symbol = position['symbol']  # Тикер
-                    dataname = self.exchange_symbol_to_data_name(exchange, symbol)  # Название тикера
-                    si = self.get_symbol_info(exchange, symbol)  # Информация о тикере
-                    size = position['qty'] * si['lotsize']  # Кол-во в штуках
-                    price = round(position['volume'] / size, 2)  # Цена входа
-                    self.positions[dataname] = Position(size, price)  # Сохраняем в списке открытых позиций
-
-    def get_order(self, order_number):
-        """Заявка BackTrader по номеру заявки на бирже
-
-        :param Order order_number: Номер заявки на бирже
-        :return: Заявка BackTrader
-        """
-        for order in self.orders.values():  # Пробегаемся по всем заявкам на бирже
-            if order.info['order_number'] == order_number:  # Если значение совпадает с номером заявки на бирже
-                return order  # то возвращаем заявкe BackTrader
-        return None  # иначе, ничего не найдено
 
     # ALData
 
