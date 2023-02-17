@@ -22,8 +22,8 @@ class Brackets(bt.Strategy):
 
     def __init__(self):
         """Инициализация торговой системы"""
-        self.isLive = False  # Сначала будут приходить исторические данные, затем перейдем в режим реальной торговли
         self.order = None  # Заявка на вход в позицию
+        self.isLive = False  # Сначала будут приходить исторические данные, затем перейдем в режим реальной торговли
 
     def next(self):
         """Получение следующего исторического/нового бара"""
@@ -44,28 +44,24 @@ class Brackets(bt.Strategy):
     def notify_data(self, data, status, *args, **kwargs):
         """Изменение статуса приходящих баров"""
         data_status = data._getstatusname(status)  # Получаем статус (только при LiveBars=True)
-        print(data_status)  # Не можем вывести в лог, т.к. первый статус DELAYED получаем до первого бара (и его даты)
+        print(data._name, '-', data_status)  # Не можем вывести в лог, т.к. первый статус DELAYED получаем до первого бара (и его даты)
         self.isLive = data_status == 'LIVE'  # Режим реальной торговли
 
     def notify_order(self, order):
         """Изменение статуса заявки"""
-        if order.status in (bt.Order.Created, bt.Order.Submitted, bt.Order.Accepted):  # Если заявка создана, отправлена брокеру, принята брокером (не исполнена)
-            self.log(f'Alive Status: {order.getstatusname()}. TransId={order.ref}')
-        elif order.status in (bt.Order.Canceled, bt.Order.Margin, bt.Order.Rejected, bt.Order.Expired):  # Если заявка отменена, нет средств, заявка отклонена брокером, снята по времени (снята)
-            self.log(f'Cancel Status: {order.getstatusname()}. TransId={order.ref}')
-        elif order.status == bt.Order.Partial:  # Если заявка частично исполнена
-            self.log(f'Part Status: {order.getstatusname()}. TransId={order.ref}')
-        elif order.status == bt.Order.Completed:  # Если заявка полностью исполнена
+        order_data_name = order.data._name  # Тикер заявки
+        self.log(f'Заявка номер {order.ref} {order.info["order_number"]} {order.getstatusname()} {"Покупка" if order.isbuy() else "Продажа"} {order_data_name} {order.size} @ {order.price}')
+        if order.status == bt.Order.Completed:  # Если заявка полностью исполнена
             if order.isbuy():  # Заявка на покупку
-                self.log(f'Bought @{order.executed.price:.2f}, Cost={order.executed.value:.2f}, Comm={order.executed.comm:.2f}')
-            elif order.issell():  # Заявка на продажу
-                self.log(f'Sold @{order.executed.price:.2f}, Cost={order.executed.value:.2f}, Comm={order.executed.comm:.2f}')
-            self.order = None  # Сбрасываем заявку на вход в позицию
+                self.log(f'Покупка {order_data_name} @{order.executed.price:.2f}, Цена {order.executed.value:.2f}, Комиссия {order.executed.comm:.2f}')
+            else:  # Заявка на продажу
+                self.log(f'Продажа {order_data_name} @{order.executed.price:.2f}, Цена {order.executed.value:.2f}, Комиссия {order.executed.comm:.2f}')
+            self.orders[order_data_name] = None  # Сбрасываем заявку на вход в позицию
 
     def notify_trade(self, trade):
         """Изменение статуса позиции"""
         if trade.isclosed:  # Если позиция закрыта
-            self.log(f'Trade Profit, Gross={trade.pnl:.2f}, NET={trade.pnlcomm:.2f}')
+            self.log(f'Прибыль по закрытой позиции {trade.getdataname()} Общая={trade.pnl:.2f}, Без комиссии={trade.pnlcomm:.2f}')
 
 
 if __name__ == '__main__':  # Точка входа при запуске этого скрипта
@@ -74,7 +70,7 @@ if __name__ == '__main__':  # Точка входа при запуске это
     symbol = 'MOEX.SBER'  # Тикер
     # portfolio = Config.PortfolioFutures  # Портфель срочного рынка
     # symbol = 'MOEX.SI-3.23'  # Для фьючерсов: <Код тикера заглавными буквами>-<Месяц экспирации: 3, 6, 9, 12>.<Последние 2 цифры года>
-    cerebro = bt.Cerebro(stdstats=False)  # Инициируем "движок" BackTrader. Стандартная статистика сделок и кривой доходности не нужна
+    cerebro = bt.Cerebro(stdstats=False, quicknotify=True)  # Инициируем "движок" BackTrader. Стандартная статистика сделок и кривой доходности не нужна
     store = ALStore(UserName=Config.UserName, RefreshToken=Config.RefreshToken)  # Хранилище Alor
     broker = store.getbroker(use_positions=False, portfolio=portfolio, exchange=exchange)  # Брокер Alor
     cerebro.setbroker(broker)  # Устанавливаем брокера
