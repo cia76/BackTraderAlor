@@ -39,7 +39,7 @@ class Brackets(bt.Strategy):
             # self.order = self.buy(exectype=bt.Order.Limit, price=close_minus_n, transmit=False)  # Родительская лимитная заявка на покупку
             # orderStop = self.sell(exectype=bt.Order.Stop, price=close_minus_2n, size=self.order.size, parent=self.order, transmit=False)  # Дочерняя стоп заявка на продажу с убытком n%
             # orderLimit = self.sell(exectype=bt.Order.Limit, price=self.close[0], size=self.order.size, parent=self.order, transmit=True)  # Дочерняя лимитная заявка на продажу с прибылью n%
-            self.order, orderStop, orderLimit = self.buy_bracket(limitprice=self.data.close[0], price=close_minus_n, stopprice=close_minus_2n)  # Bracket заявка в BT
+            self.order, orderStop, orderLimit = self.buy_bracket(limitprice=self.data.close[0], price=close_minus_n, stopprice=close_minus_2n, server=Config.TradeServerCode)  # Bracket заявка в BT
 
     def notify_data(self, data, status, *args, **kwargs):
         """Изменение статуса приходящих баров"""
