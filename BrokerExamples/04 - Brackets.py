@@ -56,7 +56,7 @@ class Brackets(bt.Strategy):
                 self.log(f'Покупка {order_data_name} @{order.executed.price:.2f}, Цена {order.executed.value:.2f}, Комиссия {order.executed.comm:.2f}')
             else:  # Заявка на продажу
                 self.log(f'Продажа {order_data_name} @{order.executed.price:.2f}, Цена {order.executed.value:.2f}, Комиссия {order.executed.comm:.2f}')
-            self.orders[order_data_name] = None  # Сбрасываем заявку на вход в позицию
+            self.order = None  # Сбрасываем заявку на вход в позицию
 
     def notify_trade(self, trade):
         """Изменение статуса позиции"""
