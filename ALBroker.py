@@ -289,7 +289,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         if not order:  # Если заявки нет в BackTrader (не из автоторговли)
             return  # то выходим, дальше не продолжаем
         order.cancel()  # Отменяем существующую заявку (Order.Canceled)
-        self.notifs.append(order.clone())  # Уведомляем брокера бо отмене заявки
+        self.notifs.append(order.clone())  # Уведомляем брокера об отмене заявки
         self.store.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки (Canceled)
 
     def on_trade(self, response):

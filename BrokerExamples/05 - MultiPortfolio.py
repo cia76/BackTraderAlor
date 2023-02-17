@@ -45,7 +45,7 @@ class MultiPortfolio(bt.Strategy):
         print('- Стоимость позиций :', '%.2f' % self.broker.getvalue())
 
         self.broker.p.portfolio = Config.PortfolioStocks  # Портфель фондового рынка
-        print('\nБаланс по тикеру', self.data._name, ':', '%.2f' % self.broker.getvalue((self.data,)))
+        print('\nБаланс по тикеру', self.datas[2]._name, ':', '%.2f' % self.broker.getvalue((self.datas[2],)))
 
     def next(self):
         """Получение следующего исторического/нового бара"""
@@ -54,7 +54,7 @@ class MultiPortfolio(bt.Strategy):
         if not all(d.datetime[0] == self.data.datetime[0] for d in self.datas):  # Если пришли бары не по всем тикерам
             return  # то выходим, дальше не продолжаем
         for d in (self.datas[0], self.datas[1]):  # По этим тикерам будет работать с заявками
-            order: bt.Order = self.orders[d._name]  # Заявка тикера
+            order = self.orders[d._name]  # Заявка тикера
             if order and order.status == bt.Order.Submitted:  # Если заявка не на бирже (отправлена брокеру)
                 return  # то ждем постановки заявки на бирже, выходим, дальше не продолжаем
             if not self.getposition(d):  # Если позиции нет
