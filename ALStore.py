@@ -48,11 +48,9 @@ class ALStore(with_metaclass(MetaSingleton, object)):
         self.notifs = collections.deque()  # Уведомления хранилища
         self.apProvider = AlorPy(self.p.UserName, self.p.RefreshToken, self.p.Demo)  # Вызываем конструктор AlorPy с именем пользователя и токеном
         self.symbols = {}  # Информация о тикерах
-        self.newBars = []  # Новые бары по подписке из Alor
+        self.new_bars = []  # Новые бары по всем подпискам на тикеры из Alor
         self.positions = collections.defaultdict(Position)  # Список позиций
         self.orders = collections.OrderedDict()  # Список заявок, отправленных на биржу
-        self.pcs = collections.defaultdict(collections.deque)  # Очередь всех родительских/дочерних заявок (Parent - Children)
-        self.ocos = {}  # Список связанных заявок (One Cancel Others)
 
     def start(self):
         self.apProvider.OnNewBar = self.on_new_bar  # Обработчик новых баров по подписке из Alor
@@ -170,46 +168,8 @@ class ALStore(with_metaclass(MetaSingleton, object)):
                 return order  # то возвращаем заявкe BackTrader
         return None  # иначе, ничего не найдено
 
-    def cancel_order(self, order):
-        """Отмена заявки"""
-        if not order.alive():  # Если заявка уже была завершена
-            return  # то выходим, дальше не продолжаем
-        portfolio = order.info['portfolio']  # Портфель
-        order_number = order.info['order_number']  # Номер заявки на бирже
-        if order.exectype in (Order.Market, Order.Limit):  # Для рыночных и лимитных заявок
-            exchange = order.info['exchange']  # Код биржи
-            self.apProvider.DeleteOrder(portfolio, exchange, order_number, False)  # Снятие заявки
-        else:  # Для стоп заявок
-            server = order.info['server']  # Торговый сервер
-            self.apProvider.DeleteStopOrder(server, portfolio, order_number, True)  # Снятие стоп заявки
-        return order  # В список уведомлений ничего не добавляем. Ждем события on_order
-
-    def oco_pc_check(self, order):
-        """
-        Проверка связанных заявок
-        Проверка родительской/дочерних заявок
-        """
-        ocos = self.ocos.copy()  # Пока ищем связанные заявки, они могут измениться. Поэтому, работаем с копией
-        for order_ref, oco_ref in ocos.items():  # Пробегаемся по списку связанных заявок
-            if oco_ref == order.ref:  # Если в заявке номер эта заявка указана как связанная (по номеру транзакции)
-                self.cancel_order(self.orders[order_ref])  # то отменяем заявку
-        if order.ref in ocos.keys():  # Если у этой заявки указана связанная заявка
-            oco_ref = ocos[order.ref]  # то получаем номер транзакции связанной заявки
-            self.cancel_order(self.orders[oco_ref])  # отменяем связанную заявку
-
-        if not order.parent and not order.transmit and order.status == Order.Completed:  # Если исполнена родительская заявка
-            pcs = self.pcs[order.ref]  # Получаем очередь родительской/дочерних заявок
-            for child in pcs:  # Пробегаемся по всем заявкам
-                if child.parent:  # Пропускаем первую (родительскую) заявку
-                    self.place_order(child)  # Отправляем дочернюю заявку на биржу
-        elif order.parent:  # Если исполнена/отменена дочерняя заявка
-            pcs = self.pcs[order.parent.ref]  # Получаем очередь родительской/дочерних заявок
-            for child in pcs:  # Пробегаемся по всем заявкам
-                if child.parent and child.ref != order.ref:  # Пропускаем первую (родительскую) заявку и исполненную заявку
-                    self.cancel_order(child)  # Отменяем дочернюю заявку
-
     # ALData
 
     def on_new_bar(self, response):
         """Обработка событий получения новых баров"""
-        self.newBars.append(response)  # Добавляем новый бар в список новых баров
+        self.new_bars.append(response)  # Добавляем новый бар в список новых баров

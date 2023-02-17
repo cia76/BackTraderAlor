@@ -31,6 +31,8 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         super(ALBroker, self).__init__()
         self.store = ALStore(**kwargs)  # Хранилище Alor
         self.notifs = collections.deque()  # Очередь уведомлений брокера о заявках
+        self.startingcash = self.cash = 0  # Стартовые и текущие свободные средства по счету
+        self.startingvalue = self.value = 0  # Стартовый и текущий баланс счета
         self.subscriptions = {}  # Справочник кодов подписки
         self.portfolios = self.store.apProvider.GetPortfolios()  # Портфели: Фондовый рынок / Фьючерсы и опционы / Валютный рынок
         self.portfolios_accounts = {}  # Спправочник кодов портфелей/счетов
@@ -38,8 +40,8 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             portfolio = self.portfolios[p][0]  # Портфель
             self.portfolios_accounts[portfolio['portfolio']] = portfolio['tks']  # Добавляем код портфеля/счета в список
         self.cash_value = {}  # Справочник Свободные средства/Стоимость позиций
-        self.startingcash = self.cash = 0  # Стартовые и текущие свободные средства по счету
-        self.startingvalue = self.value = 0  # Стартовый и текущий баланс счета
+        self.ocos = {}  # Список связанных заявок (One Cancel Others)
+        self.pcs = collections.defaultdict(collections.deque)  # Очередь всех родительских/дочерних заявок (Parent - Children)
 
     def start(self):
         super(ALBroker, self).start()
@@ -129,7 +131,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
 
     def cancel(self, order):
         """Отмена заявки"""
-        return self.store.cancel_order(order)
+        return self.cancel_order(order)
 
     def get_notification(self):
         if not self.notifs:  # Если в списке уведомлений ничего нет
@@ -192,14 +194,14 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             order.reject(self)  # то отменяем заявку (статус Order.Rejected)
             return order  # Возвращаем отмененную заявку
         if oco:  # Если есть связанная заявка
-            self.store.ocos[order.ref] = oco.ref  # то заносим в список связанных заявок
+            self.ocos[order.ref] = oco.ref  # то заносим в список связанных заявок
         if not transmit or parent:  # Для родительской/дочерних заявок
             parent_ref = getattr(order.parent, 'ref', order.ref)  # Номер транзакции родительской заявки или номер заявки, если родительской заявки нет
-            if order.ref != parent_ref and parent_ref not in self.store.pcs:  # Если есть родительская заявка, но она не найдена в очереди родительских/дочерних заявок
+            if order.ref != parent_ref and parent_ref not in self.pcs:  # Если есть родительская заявка, но она не найдена в очереди родительских/дочерних заявок
                 print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отменена. Родительская заявка не найдена')
                 order.reject(self)  # то отменяем заявку (статус Order.Rejected)
                 return order  # Возвращаем отмененную заявку
-            pcs = self.store.pcs[parent_ref]  # В очередь к родительской заявке
+            pcs = self.pcs[parent_ref]  # В очередь к родительской заявке
             pcs.append(order)  # добавляем заявку (родительскую или дочернюю)
         if transmit:  # Если обычная заявка или последняя дочерняя заявка
             if not parent:  # Для обычных заявок
@@ -264,8 +266,46 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         order_number = response['orderNumber']  # Номер заявки на бирже
         order.addinfo(order_number=order_number)  # Сохраняем номер заявки на бирже
         if order.status != Order.Accepted:  # Если новая заявка не зарегистрирована
-            self.store.oco_pc_check(order)  # то проверяем связанные и родительскую/дочерние заявки
+            self.oco_pc_check(order)  # то проверяем связанные и родительскую/дочерние заявки
         return order  # Возвращаем заявку
+
+    def cancel_order(self, order):
+        """Отмена заявки"""
+        if not order.alive():  # Если заявка уже была завершена
+            return  # то выходим, дальше не продолжаем
+        portfolio = order.info['portfolio']  # Портфель
+        order_number = order.info['order_number']  # Номер заявки на бирже
+        if order.exectype in (Order.Market, Order.Limit):  # Для рыночных и лимитных заявок
+            exchange = order.info['exchange']  # Код биржи
+            self.store.apProvider.DeleteOrder(portfolio, exchange, order_number, False)  # Снятие заявки
+        else:  # Для стоп заявок
+            server = order.info['server']  # Торговый сервер
+            self.store.apProvider.DeleteStopOrder(server, portfolio, order_number, True)  # Снятие стоп заявки
+        return order  # В список уведомлений ничего не добавляем. Ждем события on_order
+
+    def oco_pc_check(self, order):
+        """
+        Проверка связанных заявок
+        Проверка родительской/дочерних заявок
+        """
+        ocos = self.ocos.copy()  # Пока ищем связанные заявки, они могут измениться. Поэтому, работаем с копией
+        for order_ref, oco_ref in ocos.items():  # Пробегаемся по списку связанных заявок
+            if oco_ref == order.ref:  # Если в заявке номер эта заявка указана как связанная (по номеру транзакции)
+                self.cancel_order(self.store.orders[order_ref])  # то отменяем заявку
+        if order.ref in ocos.keys():  # Если у этой заявки указана связанная заявка
+            oco_ref = ocos[order.ref]  # то получаем номер транзакции связанной заявки
+            self.cancel_order(self.store.orders[oco_ref])  # отменяем связанную заявку
+
+        if not order.parent and not order.transmit and order.status == Order.Completed:  # Если исполнена родительская заявка
+            pcs = self.pcs[order.ref]  # Получаем очередь родительской/дочерних заявок
+            for child in pcs:  # Пробегаемся по всем заявкам
+                if child.parent:  # Пропускаем первую (родительскую) заявку
+                    self.place_order(child)  # Отправляем дочернюю заявку на биржу
+        elif order.parent:  # Если исполнена/отменена дочерняя заявка
+            pcs = self.pcs[order.parent.ref]  # Получаем очередь родительской/дочерних заявок
+            for child in pcs:  # Пробегаемся по всем заявкам
+                if child.parent and child.ref != order.ref:  # Пропускаем первую (родительскую) заявку и исполненную заявку
+                    self.cancel_order(child)  # Отменяем дочернюю заявку
 
     def on_position(self, response):
         """Обработка денежных позиций"""
@@ -290,7 +330,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             return  # то выходим, дальше не продолжаем
         order.cancel()  # Отменяем существующую заявку (Order.Canceled)
         self.notifs.append(order.clone())  # Уведомляем брокера об отмене заявки
-        self.store.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки (Canceled)
+        self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки (Canceled)
 
     def on_trade(self, response):
         """Обработка сделок"""
@@ -318,4 +358,4 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             self.notifs.append(order.clone())  # Уведомляем брокера о полном исполнении заявки
             # Снимаем oco-заявку только после полного исполнения заявки
             # Если нужно снять oco-заявку на частичном исполнении, то прописываем это правило в ТС
-            self.store.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки (Completed)
+            self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки (Completed)

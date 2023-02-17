@@ -44,7 +44,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         self.historyBars = []  # Исторические бары после применения фильтров
         self.guid = None  # Идентификатор подписки на историю цен
         self.lastHistoryBarReceived = False  # Признак получения последнего бара истории
-        self.liveMode = False  # Режим подписки. False = Получение истории, True = Получение новых баров
+        self.liveMode = False  # Режим получения баров. False = История, True = Новые бары
 
     def setenvironment(self, env):
         """Добавление хранилища Alor в cerebro"""
@@ -76,14 +76,14 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
             bar = self.historyBars[0]  # Берем первый бар из выборки, с ним будем работать
             self.historyBars.remove(bar)  # Убираем его из хранилища новых баров
         else:  # Если получаем историю и новые бары (self.store.newBars)
-            if len(self.store.newBars) == 0:  # Если в хранилище никаких новых баров нет
+            if len(self.store.new_bars) == 0:  # Если в хранилище никаких новых баров нет
                 return None  # то нового бара нет, будем заходить еще
-            new_bars = [newBar for newBar in self.store.newBars  # Смотрим в хранилище новых баров
+            new_bars = [newBar for newBar in self.store.new_bars  # Смотрим в хранилище новых баров
                         if newBar['guid'] == self.guid]  # бары с guid подписки
             if len(new_bars) == 0:  # Если новый бар еще не появился
                 return None  # то нового бара нет, будем заходить еще
             new_bar = new_bars[0]  # Берем первый бар из хранилища
-            self.store.newBars.remove(new_bar)  # Убираем его из хранилища
+            self.store.new_bars.remove(new_bar)  # Убираем его из хранилища
             bar = new_bar['data']  # С данными этого бара будем работать
             if not self.is_bar_valid(bar):  # Если бар не соответствует всем условиям выборки
                 return None  # то пропускаем бар, будем заходить еще
@@ -111,6 +111,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         if self.guid is not None:  # Если была подписка на бары
             self.store.apProvider.Unsubscribe(self.guid)  # Отменяем подписку на новые бары
             self.put_notification(self.DISCONNECTED)  # Отправляем уведомление об окончании получения новых баров
+            self.lastHistoryBarReceived = False  # Последний бар истории и переход в LIVE будем получать и делать по новой
         self.store.DataCls = None  # Удаляем класс данных в хранилище
 
     # Функции
@@ -159,7 +160,9 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
             return dt_open + timedelta(seconds=self.p.compression * period)  # Время закрытия бара
 
     def get_alor_date_time_now(self):
-        """Текущая дата и время из Alor (МСК)"""
-        return datetime.now(self.store.apProvider.tzMsk).replace(tzinfo=None)\
-            if not self.liveMode\
-            else self.store.apProvider.UTCTimeStampToMskDatetime(self.store.apProvider.GetTime())
+        """Текущая дата и время
+        - Если получили последний бар истории, то запрашием текущие дату и время с сервера Alor
+        - Если находимся в режиме получения истории, то переводим текущие дату и время с компьютера в МСК
+        """
+        return self.store.apProvider.UTCTimeStampToMskDatetime(self.store.apProvider.GetTime()) if self.lastHistoryBarReceived\
+            else datetime.now(self.store.apProvider.tzMsk).replace(tzinfo=None)
