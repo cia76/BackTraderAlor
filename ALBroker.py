@@ -33,9 +33,8 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         self.notifs = collections.deque()  # Очередь уведомлений брокера о заявках
         self.startingcash = self.cash = 0  # Стартовые и текущие свободные средства по счету
         self.startingvalue = self.value = 0  # Стартовый и текущий баланс счета
-        self.subscriptions = {}  # Справочник кодов подписки
-        self.portfolios = self.store.apProvider.GetPortfolios()  # Портфели: Фондовый рынок / Фьючерсы и опционы / Валютный рынок
-        self.portfolios_accounts = {}  # Спправочник кодов портфелей/счетов
+        self.portfolios = self.store.provider.GetPortfolios()  # Портфели: Фондовый рынок / Фьючерсы и опционы / Валютный рынок
+        self.portfolios_accounts = {}  # Справочник кодов портфелей/счетов
         for p in self.portfolios:  # Пробегаемся по всем портфелям
             portfolio = self.portfolios[p][0]  # Портфель
             self.portfolios_accounts[portfolio['portfolio']] = portfolio['tks']  # Добавляем код портфеля/счета в список
@@ -47,9 +46,9 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
 
     def start(self):
         super(ALBroker, self).start()
-        self.store.apProvider.OnPosition = self.on_position  # Обработка позиций
-        self.store.apProvider.OnTrade = self.on_trade  # Обработка сделок
-        self.store.apProvider.OnOrder = self.on_order  # Обработка заявок
+        self.store.provider.OnPosition = self.on_position  # Обработка позиций
+        self.store.provider.OnTrade = self.on_trade  # Обработка сделок
+        self.store.provider.OnOrder = self.on_order  # Обработка заявок
         if self.p.use_positions:  # Если нужно при запуске брокера получить текущие позиции на бирже
             self.get_all_active_positions()  # то получаем их
         self.startingcash = self.cash = self.getcash()  # Стартовые и текущие свободные средства по счету. Подписка на позиции для портфеля/биржи
@@ -59,13 +58,13 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         """Свободные средства по портфелю/бирже, по всем счетам"""
         if self.store.BrokerCls:  # Если брокер есть в хранилище
             portfolios = (self.p.portfolio,) if self.p.portfolio else self.portfolios_accounts  # Указанный портфель или все
-            exchanges = (self.p.exchange,) if self.p.exchange else self.store.apProvider.exchanges  # Указанная биржа или все
+            exchanges = (self.p.exchange,) if self.p.exchange else self.store.provider.exchanges  # Указанная биржа или все
             cash = 0  # Будем набирать свободные средства по каждому портфелю на каждой бирже
             for portfolio in portfolios:  # Пробегаемся по всем заданным портфелям
                 for exchange in exchanges:  # Пробегаемся по всем заданным биржам
-                    if ('positions', portfolio, exchange) not in self.subscriptions:  # Если подписки на позиции для портфеля/биржи нет в подписках
+                    if not self.is_subscribed(portfolio, exchange):  # Если нет подписок портфеля/биржи
                         self.subscribe(portfolio, exchange)  # то подписываемся на события портфеля/биржи
-                        m = self.store.apProvider.GetMoney(portfolio, exchange)  # Денежная позиция
+                        m = self.store.provider.GetMoney(portfolio, exchange)  # Денежная позиция
                         c = round(m['cash'], 2)  # Округляем до копеек
                         v = round(m['portfolio'] - m['cash'], 2)  # Вычитаем, округляем до копеек
                         self.cash_value[(portfolio, exchange)] = (c, v)  # Свободные средства/Стоимость позиций
@@ -85,7 +84,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                 for data in datas:  # Пробегаемся по всем тикерам
                     exchange, symbol = self.store.data_name_to_exchange_symbol(data._name)  # По тикеру получаем биржу и код тикера
                     for portfolio in portfolios:  # Пробегаемся по всем портфелям
-                        position = self.store.apProvider.GetPosition(portfolio, exchange, symbol)  # Пробуем получить позицию
+                        position = self.store.provider.GetPosition(portfolio, exchange, symbol)  # Пробуем получить позицию
                         if not position:  # Если не получили позицию
                             continue  # то переходим к следующему портфелю, дальше не продолжаем
                         si = self.store.get_symbol_info(exchange, symbol)  # Информация о тикере
@@ -94,12 +93,12 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                         value += round(position['volume'] + position['unrealisedPl'] * si['priceMultiplier'], 2)  # Текущая стоимость позиции по тикеру
                 self.value = value  # Стоимость всех позиций по тикерам
             else:  # Если получаем по портфелям/биржам
-                exchanges = (self.p.exchange,) if self.p.exchange else self.store.apProvider.exchanges  # Указанная биржа или все
+                exchanges = (self.p.exchange,) if self.p.exchange else self.store.provider.exchanges  # Указанная биржа или все
                 for portfolio in portfolios:  # Пробегаемся по всем портфелям
                     for exchange in exchanges:  # Пробегаемся по всем биржам
-                        if ('positions', portfolio, exchange) not in self.subscriptions:  # Если подписки на позиции для портфеля/биржи нет в подписках
+                        if not self.is_subscribed(portfolio, exchange):  # Если нет подписок портфеля/биржи
                             self.subscribe(portfolio, exchange)  # то подписываемся на события портфеля/биржи
-                            m = self.store.apProvider.GetMoney(portfolio, exchange)  # Денежная позиция
+                            m = self.store.provider.GetMoney(portfolio, exchange)  # Денежная позиция
                             c = round(m['cash'], 2)  # Округляем до копеек
                             v = round(m['portfolio'] - m['cash'], 2)  # Вычитаем, округляем до копеек
                             self.cash_value[(portfolio, exchange)] = (c, v)  # Свободные средства/Стоимость позиций
@@ -117,7 +116,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         - До нужного кол-ва (order_target_size)
         - До нужного объема (order_target_value)
         """
-        return self.store.positions[data._name]  # Получаем позицию по тикеру или нулевую позицию, если тикера в списке позиций нет
+        return self.positions[data._name]  # Получаем позицию по тикеру или нулевую позицию, если тикера в списке позиций нет
 
     def buy(self, owner, data, size, price=None, plimit=None, exectype=None, valid=None, tradeid=0, oco=None, trailamount=None, trailpercent=None, parent=None, transmit=True, **kwargs):
         """Заявка на покупку"""
@@ -146,40 +145,54 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
     def stop(self):
         super(ALBroker, self).stop()
         self.unsubscribe()  # Отменяем все подписки
-        self.store.apProvider.OnPosition = self.store.apProvider.DefaultHandler  # Обработка позиций
-        self.store.apProvider.OnTrade = self.store.apProvider.DefaultHandler  # Обработка сделок
-        self.store.apProvider.OnOrder = self.store.apProvider.DefaultHandler  # Обработка заявок
+        self.store.provider.OnPosition = self.store.provider.DefaultHandler  # Обработка позиций
+        self.store.provider.OnTrade = self.store.provider.DefaultHandler  # Обработка сделок
+        self.store.provider.OnOrder = self.store.provider.DefaultHandler  # Обработка заявок
         self.store.BrokerCls = None  # Удаляем класс брокера из хранилища
 
     # Функции
 
+    def is_subscribed(self, portfolio, exchange):
+        """Проверка наличия подписки
+
+        :param str portfolio: Клиентский портфель
+        :param str exchange: Биржа 'MOEX' или 'SPBX
+        """
+        for guid in self.store.provider.subscriptions.keys():  # Пробегаемся по всем подпискам
+            subscription = self.store.provider.subscriptions[guid]  # Подписка
+            if subscription['portfolio'] == portfolio and subscription['exchange'] == exchange:  # Если есть в списке подписок
+                return True  # то подписка есть
+        return False  # иначе, подписки нет
+
     def subscribe(self, portfolio, exchange):
-        """Подписка на заявки и сделки
+        """Подписка на позиции, сделки и заявки
 
         :param str portfolio: Клиентский портфель
         :param str exchange: Биржа 'MOEX' или 'SPBX'
         """
-        self.subscriptions[('positions', portfolio, exchange)] = self.store.apProvider.PositionsGetAndSubscribeV2(portfolio, exchange)  # Подписка на позиции (получение свободных средств и баланса счета)
-        self.subscriptions[('trades', portfolio, exchange)] = self.store.apProvider.TradesGetAndSubscribeV2(portfolio, exchange)  # Подписка на сделки (изменение статусов заявок)
-        self.subscriptions[('orders', portfolio, exchange)] = self.store.apProvider.OrdersGetAndSubscribeV2(portfolio, exchange)  # Подписка на заявки (снятие заявок с биржи)
+        self.store.provider.PositionsGetAndSubscribeV2(portfolio, exchange)  # Подписка на позиции (получение свободных средств и баланса счета)
+        self.store.provider.TradesGetAndSubscribeV2(portfolio, exchange)  # Подписка на сделки (изменение статусов заявок)
+        self.store.provider.OrdersGetAndSubscribeV2(portfolio, exchange)  # Подписка на заявки (снятие заявок с биржи)
 
     def unsubscribe(self):
         """Отмена всех подписок"""
-        for s in self.subscriptions:  # Пробегаемся по всем подпискам
-            guid = self.subscriptions[s]  # Получаем код подписки
-            self.store.apProvider.Unsubscribe(guid)  # Отменяем подписку
+        for guid in self.store.provider.subscriptions.keys():  # Пробегаемся по всем подпискам
+            if self.store.provider.subscriptions[guid]['opcode'] in \
+                    ('PositionsGetAndSubscribeV2',  # Если это подписка на позиции (получение свободных средств и баланса счета)
+                     'TradesGetAndSubscribeV2',  # или подписка на сделки (изменение статусов заявок)
+                     'OrdersGetAndSubscribeV2'):  # или подписка на заявки (снятие заявок с биржи)
+                self.store.provider.Unsubscribe(guid)  # то отменяем подписку
 
     def get_all_active_positions(self):
-        """Все активные позиции по всем клиентски портфелям и биржам"""
-        portfolios = self.store.apProvider.GetPortfolios()  # Портфели: Фондовый рынок / Фьючерсы и опционы / Валютный рынок
-        for p in portfolios:  # Пробегаемся по всем портфелям
-            for exchange in self.store.apProvider.exchanges:  # Пробегаемся по всем биржам
-                positions = self.store.apProvider.GetPositions(p, exchange, True)  # Получаем все позиции без денежной позиции
+        """Все активные позиции по всем клиентским портфелям и биржам"""
+        for p in self.portfolios:  # Пробегаемся по всем портфелям
+            for exchange in self.store.provider.exchanges:  # Пробегаемся по всем биржам
+                positions = self.store.provider.GetPositions(p, exchange, True)  # Получаем все позиции без денежной позиции
                 for position in positions:  # Пробегаемся по всем позициям
                     symbol = position['symbol']  # Тикер
                     dataname = self.store.exchange_symbol_to_data_name(exchange, symbol)  # Название тикера
                     si = self.store.get_symbol_info(exchange, symbol)  # Информация о тикере
-                    size = position['qty'] * si['lotsize']  # Кол-во в штуках
+                    size = position['qty'] * si['lotsize']  # Кол-во в штуках. Отрицательное для коротких позиций
                     price = round(position['volume'] / size, 2)  # Цена входа
                     self.positions[dataname] = Position(size, price)  # Сохраняем в списке открытых позиций
 
@@ -213,7 +226,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                 print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отменена. Портфель не найден')
                 order.reject(self)  # то отменяем заявку (статус Order.Rejected)
                 return order  # Возвращаем отмененную заявку
-        if ('orders', order.info['portfolio'], exchange) not in self.subscriptions:  # Если подписка на заявки портфеля/биржи нет в подписках
+        if not self.is_subscribed(order.info['portfolio'], exchange):  # Если нет подписок портфеля/биржи
             self.subscribe(self.p.portfolio, self.p.exchange)  # то подписываемся на события портфеля/биржи
         si = self.store.get_symbol_info(exchange, symbol)  # Информация о тикере
         if not si:  # Если тикер не найден
@@ -247,7 +260,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         exchange = order.info['exchange']  # Код биржи
         symbol = order.info['symbol']  # Код тикера
         si = self.store.get_symbol_info(exchange, symbol)  # Информация о тикере
-        quantity = int(order.size / si['lotsize'])  # Размер позиции в лотах
+        quantity = abs(int(order.size / si['lotsize']))  # Размер позиции в лотах. В Alor всегда передается положительный размер лота
         server = stop_price = None  # Торговый сервер, счет, стоп и лимитную цены получим дальше
         if order.exectype in (Order.Stop, Order.StopLimit):  # Для стоп/стоп-лимитных заявок
             if not order.price:  # Если стоп цена не указана
@@ -261,23 +274,23 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                 return order  # Возвращаем отмененную заявку
             server = order.info['server']  # Торговый сервер
         if order.exectype == Order.Market:  # Рыночная заявка
-            response = self.store.apProvider.CreateMarketOrder(portfolio, exchange, symbol, side, quantity)
+            response = self.store.provider.CreateMarketOrder(portfolio, exchange, symbol, side, quantity)
         elif order.exectype == Order.Limit:  # Лимитная заявка
             if not order.price:  # Если цена не указана
                 print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отменена. Лимитная цена (price) не указана для заявки типа {order.exectype}')
                 order.reject(self)  # то отклоняем заявку (Order.Rejected)
                 return order  # Возвращаем отмененную заявку
             limit_price = self.store.bt_to_alor_price(exchange, symbol, order.price)  # получаем лимитную цену
-            response = self.store.apProvider.CreateLimitOrder(portfolio, exchange, symbol, side, quantity, limit_price)
+            response = self.store.provider.CreateLimitOrder(portfolio, exchange, symbol, side, quantity, limit_price)
         elif order.exectype == Order.Stop:  # Стоп заявка
-            response = self.store.apProvider.CreateTakeProfitOrder(server, account, portfolio, exchange, symbol, side, quantity, stop_price)
+            response = self.store.provider.CreateTakeProfitOrder(server, account, portfolio, exchange, symbol, side, quantity, stop_price)
         elif order.exectype == Order.StopLimit:  # Стоп-лимитная заявка
             if not order.price:  # Если цена не указана
                 print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отменена. Лимитная цена (pricelimit) не указана для заявки типа {order.exectype}')
                 order.reject(self)  # то отклоняем заявку (Order.Rejected)
                 return order  # Возвращаем отмененную заявку
             limit_price = self.store.bt_to_alor_price(exchange, symbol, order.price)  # получаем лимитную цену
-            response = self.store.apProvider.CreateTakeProfitLimitOrder(server, account, portfolio, exchange, symbol, side, quantity, stop_price, limit_price)
+            response = self.store.provider.CreateTakeProfitLimitOrder(server, account, portfolio, exchange, symbol, side, quantity, stop_price, limit_price)
         else:  # Close, StopTrail, StopTrailLimit, Historical заявки не реализованы
             print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отменена. Работа с заявками {order.exectype} не реализована')
             order.reject(self)  # то отклоняем заявку (Order.Rejected)
@@ -304,10 +317,10 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         order_number = order.info['order_number']  # Номер заявки на бирже
         if order.exectype in (Order.Market, Order.Limit):  # Для рыночных и лимитных заявок
             exchange = order.info['exchange']  # Код биржи
-            self.store.apProvider.DeleteOrder(portfolio, exchange, order_number, False)  # Снятие заявки
+            self.store.provider.DeleteOrder(portfolio, exchange, order_number, False)  # Снятие заявки
         else:  # Для стоп заявок
             server = order.info['server']  # Торговый сервер
-            self.store.apProvider.DeleteStopOrder(server, portfolio, order_number, True)  # Снятие стоп заявки
+            self.store.provider.DeleteStopOrder(server, portfolio, order_number, True)  # Снятие стоп заявки
         return order  # В список уведомлений ничего не добавляем. Ждем события on_order
 
     def oco_pc_check(self, order):
@@ -342,7 +355,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         c = round(data['volume'], 2)  # Свободные средства округляем до копеек
         portfolio = data['portfolio']  # Портфель
         exchange = data['exchange']  # Биржа
-        m = self.store.apProvider.GetMoney(portfolio, exchange)  # Денежная позиция
+        m = self.store.provider.GetMoney(portfolio, exchange)  # Денежная позиция
         v = round(m['portfolio'] - data['volume'], 2)  # Суммируем, округляем до копеек
         self.cash_value[(portfolio, exchange)] = (c, v)  # Свободные средства/Стоимость позиций
 
@@ -366,13 +379,13 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         order = self.get_order(order_no)  # Номер заявки BackTrader
         if not order:  # Если заявки нет в BackTrader (не из автоторговли)
             return  # то выходим, дальше не продолжаем
-        size = data['qtyUnits']  # Кол-во в штуках
+        size = data['qtyUnits']  # Кол-во в штуках. Всегда положительное
         if data['side'] == 'sell':  # Если сделка на продажу
             size *= -1  # то кол-во ставим отрицательным
         price = abs(data['price'] / size)  # Цена исполнения за штуку
         str_utc = data['date'][0:19]  # Возвращается зн-ие типа: '2023-02-16T09:25:01.4335364Z'. Берем первые 20 символов
         dt_utc = datetime.strptime(str_utc, '%Y-%m-%dT%H:%M:%S')  # Переводим в дату/время UTC
-        dt = self.store.apProvider.UTCToMskDateTime(dt_utc)  # Дата/время сделки по времени биржи (МСК)
+        dt = self.store.provider.UTCToMskDateTime(dt_utc)  # Дата/время сделки по времени биржи (МСК)
         pos = self.getposition(order.data)  # Получаем позицию по тикеру или нулевую позицию если тикера в списке позиций нет
         psize, pprice, opened, closed = pos.update(size, price)  # Обновляем размер/цену позиции на размер/цену сделки
         order.execute(dt, size, price, closed, 0, 0, opened, 0, 0, 0, 0, psize, pprice)  # Исполняем заявку в BackTrader
