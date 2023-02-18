@@ -44,12 +44,22 @@ class ALStore(with_metaclass(MetaSingleton, object)):
     def __init__(self):
         super(ALStore, self).__init__()
         self.notifs = collections.deque()  # Уведомления хранилища
-        self.apProvider = AlorPy(self.p.UserName, self.p.RefreshToken, self.p.Demo)  # Вызываем конструктор AlorPy с именем пользователя и токеном
+        self.provider = AlorPy(self.p.UserName, self.p.RefreshToken, self.p.Demo)  # Работа с Alor OpenAPI V2 из Python https://alor.dev/docs с именем пользователя и токеном
         self.symbols = {}  # Информация о тикерах
         self.new_bars = []  # Новые бары по всем подпискам на тикеры из Alor
 
     def start(self):
-        self.apProvider.OnNewBar = self.on_new_bar  # Обработчик новых баров по подписке из Alor
+        self.provider.OnEntering = lambda: print('- WebSocket Thread: Запуск')
+        self.provider.OnEnter = lambda: print('- WebSocket Thread: Запущен')
+        self.provider.OnConnect = lambda: print('- WebSocket Task: Подключен к серверу')
+        self.provider.OnResubscribe = lambda: print(f'- WebSocket Task: Возобновление подписок ({len(self.provider.subscriptions)})')
+        self.provider.OnReady = lambda: print('- WebSocket Task: Готов')
+        self.provider.OnDisconnect = lambda: print('- WebSocket Task: Отключен от сервера')
+        self.provider.OnTimeout = lambda: print('- WebSocket Task: Таймаут')
+        self.provider.OnError = lambda response: print(f'- WebSocket Task: {response}')
+        self.provider.OnCancel = lambda: print('- WebSocket Task: Отмена')
+        self.provider.OnExit = lambda: print('- WebSocket Thread: Завершение')
+        self.provider.OnNewBar = lambda response: self.new_bars.append(response)  # Обработчик новых баров по подписке из Alor
 
     def put_notification(self, msg, *args, **kwargs):
         self.notifs.append((msg, args, kwargs))
@@ -60,8 +70,8 @@ class ALStore(with_metaclass(MetaSingleton, object)):
         return [x for x in iter(self.notifs.popleft, None)]
 
     def stop(self):
-        self.apProvider.OnNewBar = self.apProvider.DefaultHandler  # Возвращаем обработчик по умолчанию
-        self.apProvider.CloseWebSocket()  # Перед выходом закрываем соединение с WebSocket
+        self.provider.OnNewBar = self.provider.DefaultHandler  # Возвращаем обработчик по умолчанию
+        self.provider.CloseWebSocket()  # Перед выходом закрываем соединение с WebSocket
 
     # Функции
 
@@ -74,7 +84,7 @@ class ALStore(with_metaclass(MetaSingleton, object)):
         :return: Значение из кэша/Alor или None, если тикер не найден
         """
         if reload or (exchange, symbol) not in self.symbols:  # Если нужно получить информацию с Alor или нет информации о тикере в справочнике
-            symbol_info = self.apProvider.GetSymbol(exchange, symbol)  # Получаем информацию о тикере с Alor
+            symbol_info = self.provider.GetSymbol(exchange, symbol)  # Получаем информацию о тикере с Alor
             if not symbol_info:  # Если тикер не найден
                 print(f'Информация о {exchange}.{symbol} не найдена')
                 return None  # то возвращаем пустое значение
