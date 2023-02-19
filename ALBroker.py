@@ -32,7 +32,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         self.store = ALStore(**kwargs)  # Хранилище Alor
         self.notifs = collections.deque()  # Очередь уведомлений брокера о заявках
         self.startingcash = self.cash = 0  # Стартовые и текущие свободные средства по счету
-        self.startingvalue = self.value = 0  # Стартовый и текущий баланс счета
+        self.startingvalue = self.value = 0  # Стартовая и текущая стоимость позиций
         self.portfolios = self.store.provider.GetPortfolios()  # Портфели: Фондовый рынок / Фьючерсы и опционы / Валютный рынок
         self.portfolios_accounts = {}  # Справочник кодов портфелей/счетов
         for p in self.portfolios:  # Пробегаемся по всем портфелям
@@ -52,7 +52,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         if self.p.use_positions:  # Если нужно при запуске брокера получить текущие позиции на бирже
             self.get_all_active_positions()  # то получаем их
         self.startingcash = self.cash = self.getcash()  # Стартовые и текущие свободные средства по счету. Подписка на позиции для портфеля/биржи
-        self.startingvalue = self.value = self.getvalue()  # Стартовый и текущий баланс счета
+        self.startingvalue = self.value = self.getvalue()  # Стартовая и текущая стоимость позиций
 
     def getcash(self):
         """Свободные средства по портфелю/бирже, по всем счетам"""
@@ -79,7 +79,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         """Стоимость позиции, позиций по портфелю/бирже, всех позиций"""
         if self.store.BrokerCls:  # Если брокер есть в хранилище
             portfolios = (self.p.portfolio,) if self.p.portfolio else self.portfolios_accounts  # Указанный портфель или все
-            value = 0  # Будем набирать баланс счета
+            value = 0  # Будем набирать стоимость позиций
             if datas:  # Если получаем по тикерам
                 for data in datas:  # Пробегаемся по всем тикерам
                     exchange, symbol = self.store.data_name_to_exchange_symbol(data._name)  # По тикеру получаем биржу и код тикера
@@ -104,10 +104,10 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                             self.cash_value[(portfolio, exchange)] = (c, v)  # Свободные средства/Стоимость позиций
                         _, v = self.cash_value[portfolio, exchange]  # Получаем значение из подписки
                         value += round(v, 2)  # Суммируем, округляем до копеек
-                        if value:  # Если есть баланс
-                            break  # То на др. биржах не смотрим, т.к. балансы на них дублируются
-                    self.value = value  # Баланс счета по каждому портфелю на каждой бирже
-        return self.value  # Возвращаем последний известный баланс счета
+                        if value:  # Если есть стоимость позиций
+                            break  # То на др. биржах не смотрим, т.к. стоимость позиций на них дублируются
+                    self.value = value  # Стоимость позиций по портфелю/бирже, всех позиций
+        return self.value  # Возвращаем стоимость позиций
 
     def getposition(self, data):
         """Позиция по тикеру
@@ -170,7 +170,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         :param str portfolio: Клиентский портфель
         :param str exchange: Биржа 'MOEX' или 'SPBX'
         """
-        self.store.provider.PositionsGetAndSubscribeV2(portfolio, exchange)  # Подписка на позиции (получение свободных средств и баланса счета)
+        self.store.provider.PositionsGetAndSubscribeV2(portfolio, exchange)  # Подписка на позиции (получение свободных средств и стоимости позиций)
         self.store.provider.TradesGetAndSubscribeV2(portfolio, exchange)  # Подписка на сделки (изменение статусов заявок)
         self.store.provider.OrdersGetAndSubscribeV2(portfolio, exchange)  # Подписка на заявки (снятие заявок с биржи)
 
@@ -178,7 +178,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         """Отмена всех подписок"""
         for guid in self.store.provider.subscriptions.keys():  # Пробегаемся по всем подпискам
             if self.store.provider.subscriptions[guid]['opcode'] in \
-                    ('PositionsGetAndSubscribeV2',  # Если это подписка на позиции (получение свободных средств и баланса счета)
+                    ('PositionsGetAndSubscribeV2',  # Если это подписка на позиции (получение свободных средств и стоимости позиций)
                      'TradesGetAndSubscribeV2',  # или подписка на сделки (изменение статусов заявок)
                      'OrdersGetAndSubscribeV2'):  # или подписка на заявки (снятие заявок с биржи)
                 self.store.provider.Unsubscribe(guid)  # то отменяем подписку
