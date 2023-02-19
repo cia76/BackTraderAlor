@@ -107,7 +107,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                         if value:  # Если есть стоимость позиций
                             break  # То на др. биржах не смотрим, т.к. стоимость позиций на них дублируются
                     self.value = value  # Стоимость позиций по портфелю/бирже, всех позиций
-        return self.value  # Возвращаем стоимость позиций
+        return self.value
 
     def getposition(self, data):
         """Позиция по тикеру
