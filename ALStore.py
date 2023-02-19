@@ -146,9 +146,3 @@ class ALStore(with_metaclass(MetaSingleton, object)):
         if primary_board == 'TQOB':  # Для рынка облигаций
             price *= 10  # цену умножаем на 10
         return price
-
-    # ALData
-
-    def on_new_bar(self, response):
-        """Обработка событий получения новых баров"""
-        self.new_bars.append(response)  # Добавляем новый бар в список новых баров
