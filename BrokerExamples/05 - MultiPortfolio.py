@@ -29,21 +29,21 @@ class MultiPortfolio(bt.Strategy):
 
     def start(self):
         """Запуск торговой системы"""
-        # print('\nВсе рынки')
-        # print('- Свободные средства:', '%.2f' % self.broker.getcash())
-        # print('- Стоимость позиций :', '%.2f' % self.broker.getvalue())
-        #
-        # print(f'\nФондовый рынок ({Config.PortfolioStocks})')
-        # print('- Свободные средства:', '%.2f' % self.broker.getcash(portfolio=Config.PortfolioStocks))
-        # print('- Стоимость позиций :', '%.2f' % self.broker.getvalue(portfolio=Config.PortfolioStocks))
-        #
-        # print(f'\nСрочный рынок ({Config.PortfolioFutures})')
-        # print('- Свободные средства:', '%.2f' % self.broker.getcash(portfolio=Config.PortfolioFutures))
-        # print('- Стоимость позиций :', '%.2f' % self.broker.getvalue(portfolio=Config.PortfolioFutures))
+        print('\nВсе рынки')
+        print('- Свободные средства:', '%.2f' % self.broker.getcash())
+        print('- Стоимость позиций :', '%.2f' % self.broker.getvalue())
 
-        # for d in self.datas:  # Пробегаемся по всем тикерам
-        #     # Если по тикеру нет позиции, то будет Ошибка сервера: 404 Symbol <symbol> does not exist! <PreparedRequest [GET]>
-        #     print('\nБаланс по тикеру', d._name, ':', '%.2f\n' % self.broker.getvalue((d,)))
+        print(f'\nФондовый рынок ({Config.PortfolioStocks})')
+        print('- Свободные средства:', '%.2f' % self.broker.getcash(portfolio=Config.PortfolioStocks))
+        print('- Стоимость позиций :', '%.2f' % self.broker.getvalue(portfolio=Config.PortfolioStocks))
+
+        print(f'\nСрочный рынок ({Config.PortfolioFutures})')
+        print('- Свободные средства:', '%.2f' % self.broker.getcash(portfolio=Config.PortfolioFutures))
+        print('- Стоимость позиций :', '%.2f' % self.broker.getvalue(portfolio=Config.PortfolioFutures))
+
+        for d in self.datas:  # Пробегаемся по всем тикерам
+            # Если по тикеру нет позиции, то будет Ошибка сервера: 404 Symbol <symbol> does not exist! <PreparedRequest [GET]>
+            print('\nБаланс по тикеру', d._name, ':', '%.2f\n' % self.broker.getvalue((d,)))
 
     def next(self):
         """Получение следующего исторического/нового бара"""
