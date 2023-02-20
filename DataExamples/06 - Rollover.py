@@ -14,7 +14,7 @@ if __name__ == '__main__':  # Точка входа при запуске это
         openinterest=-1,  # Открытого интереса в файле нет
         sessionend=time(0, 0),  # Для дневных данных и выше подставляется время окончания сессии. Чтобы совпадало с историей, нужно поставить закрытие на 00:00
         fromdate=datetime(2020, 1, 1))  # Начальная дата и время приема исторических данных (Входит)
-    store = ALStore(UserName=Config.UserName, RefreshToken=Config.RefreshToken)  # Хранилище Alor
+    store = ALStore(UserName=Config.UserName, RefreshToken=Config.RefreshToken, Boards=Config.Boards, Accounts=Config.Accounts)  # Хранилище Alor
     d2 = store.getdata(dataname=symbol, timeframe=TimeFrame.Days, fromdate=datetime(2022, 12, 1), LiveBars=False)  # Получаем историю из Alor
     cerebro = Cerebro(stdstats=False)  # Инициируем "движок" BackTrader. Стандартная статистика сделок и кривой доходности не нужна
     cerebro.rolloverdata(d1, d2, name=symbol)  # Склеенный тикер

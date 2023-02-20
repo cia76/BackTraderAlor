@@ -92,7 +92,7 @@ class MultiPortfolio(bt.Strategy):
 if __name__ == '__main__':  # Точка входа при запуске этого скрипта
     symbol_stocks = 'MOEX.SBER'  # Тикер
     symbol_futures = 'MOEX.SI-3.23'  # Для фьючерсов: <Код тикера заглавными буквами>-<Месяц экспирации: 3, 6, 9, 12>.<Последние 2 цифры года>
-    store = ALStore(UserName=Config.UserName, RefreshToken=Config.RefreshToken)  # Хранилище Alor
+    store = ALStore(UserName=Config.UserName, RefreshToken=Config.RefreshToken, Boards=Config.Boards, Accounts=Config.Accounts)  # Хранилище Alor
     cerebro = bt.Cerebro(stdstats=False, quicknotify=True)  # Инициируем "движок" BackTrader. Стандартная статистика сделок и кривой доходности не нужна
     broker = store.getbroker(use_positions=False)  # Брокер Alor без привязки к портфелю/бирже
     cerebro.setbroker(broker)  # Устанавливаем брокера
