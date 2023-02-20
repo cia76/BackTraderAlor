@@ -49,13 +49,13 @@ class ALStore(with_metaclass(MetaSingleton, object)):
         self.symbols = {}  # Информация о тикерах
         self.new_bars = []  # Новые бары по всем подпискам на тикеры из Alor
         self.portfolios_accounts = {}  # Справочник кодов портфелей/счетов
-
-    def start(self):
         for market in self.provider.GetPortfolios().values():  # Пробегаемся по всем рынкам: Фондовый рынок / Фьючерсы и опционы / Валютный рынок
             for portfolio in market:  # Пробегаемся по всем портфелям рынка
                 p = portfolio['portfolio']  # Номер портфеля
                 if p in Config.Accounts:  # Если он есть в справочнике портфелей
                     self.portfolios_accounts[p] = portfolio['tks']  # то добавляем код портфеля/счета в список
+
+    def start(self):
         self.provider.OnEntering = lambda: print('- WebSocket Thread: Запуск')
         self.provider.OnEnter = lambda: print('- WebSocket Thread: Запущен')
         self.provider.OnConnect = lambda: print('- WebSocket Task: Подключен к серверу')
