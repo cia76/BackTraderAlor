@@ -77,8 +77,8 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         else:  # Если получаем историю и новые бары (self.store.newBars)
             if len(self.store.new_bars) == 0:  # Если в хранилище никаких новых баров нет
                 return None  # то нового бара нет, будем заходить еще
-            new_bars = [newBar for newBar in self.store.new_bars  # Смотрим в хранилище новых баров
-                        if newBar['guid'] == self.guid]  # бары с guid подписки
+            new_bars = [b for b in self.store.new_bars  # Смотрим в хранилище новых баров
+                        if b['guid'] == self.guid]  # бары с guid подписки
             if len(new_bars) == 0:  # Если новый бар еще не появился
                 return None  # то нового бара нет, будем заходить еще
             new_bar = new_bars[0]  # Берем первый бар из хранилища
@@ -89,6 +89,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
             dt_open = self.get_bar_open_date_time(bar)  # Дата/время открытия бара
             if dt_open <= self.lastDateTime:  # Если пришел бар из прошлого
                 return None  # то пропускаем бар, будем заходить еще
+            self.lastDateTime = dt_open  # Запоминаем дату/время пришедшего бара для будущих сравнений
             dt_next_bar_close = self.get_bar_close_date_time(dt_open, 2)  # Биржевое время закрытия следующего бара
             time_market_now = self.get_alor_date_time_now()  # Текущее биржевое время из Alor
             if not self.liveMode:  # Если еще не находимся в режиме получения новых баров (LIVE)
@@ -103,8 +104,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
                     self.put_notification(self.DELAYED)  # Отправляем уведомление об отправке исторических (не новых) баров
                     self.liveMode = False  # Переходим в режим получения истории
         # Все проверки пройдены. Записываем полученный исторический/новый бар
-        self.lastDateTime = dt_open  # Дату/время открытия бара переводим в формат хранения даты/времени в BackTrader
-        self.lines.datetime[0] = date2num(self.lastDateTime)  # DateTime
+        self.lines.datetime[0] = date2num(self.get_bar_open_date_time(bar))  # DateTime
         self.lines.open[0] = self.store.alor_to_bt_price(self.exchange, self.symbol, bar['open'])  # Open
         self.lines.high[0] = self.store.alor_to_bt_price(self.exchange, self.symbol, bar['high'])  # High
         self.lines.low[0] = self.store.alor_to_bt_price(self.exchange, self.symbol, bar['low'])  # Low
