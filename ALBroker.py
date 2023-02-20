@@ -68,7 +68,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         """Стоимость позиции, позиций по портфелю/бирже, всех позиций"""
         if self.store.BrokerCls:  # Если брокер есть в хранилище
             value = 0  # Будем набирать стоимость позиций
-            if datas:  # Если получаем по тикерам
+            if datas is not None:  # Если получаем по тикерам
                 for data in datas:  # Пробегаемся по всем тикерам
                     exchange, symbol = self.store.data_name_to_exchange_symbol(data._name)  # По тикеру получаем биржу и код тикера
                     si = self.store.get_symbol_info(exchange, symbol)  # Информация о тикере
@@ -294,8 +294,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         else:  # Ошибки нет
             order.accept(self)  # Заявка принята на бирже (Order.Accepted)
         self.orders[order.ref] = order  # Сохраняем в списке заявок, отправленных на биржу
-        order_number = response['orderNumber']  # Номер заявки на бирже
-        order.addinfo(order_number=order_number)  # Сохраняем номер заявки на бирже
+        order.addinfo(order_number=response['orderNumber'])  # Сохраняем пришедший номер заявки на бирже
         if order.status != Order.Accepted:  # Если новая заявка не зарегистрирована
             self.oco_pc_check(order)  # то проверяем связанные и родительскую/дочерние заявки
         return order  # Возвращаем заявку
