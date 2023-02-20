@@ -4,6 +4,7 @@ from backtrader.metabase import MetaParams
 from backtrader.utils.py3 import with_metaclass
 
 from AlorPy import AlorPy
+from AlorPy.Config import Config  # Работаем с привязками
 
 
 class MetaSingleton(MetaParams):
@@ -47,8 +48,14 @@ class ALStore(with_metaclass(MetaSingleton, object)):
         self.provider = AlorPy(self.p.UserName, self.p.RefreshToken, self.p.Demo)  # Работа с Alor OpenAPI V2 из Python https://alor.dev/docs с именем пользователя и токеном
         self.symbols = {}  # Информация о тикерах
         self.new_bars = []  # Новые бары по всем подпискам на тикеры из Alor
+        self.portfolios_accounts = {}  # Справочник кодов портфелей/счетов
 
     def start(self):
+        for market in self.provider.GetPortfolios().values():  # Пробегаемся по всем рынкам: Фондовый рынок / Фьючерсы и опционы / Валютный рынок
+            for portfolio in market:  # Пробегаемся по всем портфелям рынка
+                p = portfolio['portfolio']  # Номер портфеля
+                if p in Config.Accounts:  # Если он есть в справочнике портфелей
+                    self.portfolios_accounts[p] = portfolio['tks']  # то добавляем код портфеля/счета в список
         self.provider.OnEntering = lambda: print('- WebSocket Thread: Запуск')
         self.provider.OnEnter = lambda: print('- WebSocket Thread: Запущен')
         self.provider.OnConnect = lambda: print('- WebSocket Task: Подключен к серверу')
@@ -90,6 +97,39 @@ class ALStore(with_metaclass(MetaSingleton, object)):
                 return None  # то возвращаем пустое значение
             self.symbols[(exchange, symbol)] = symbol_info  # Заносим информацию о тикере в справочник
         return self.symbols[(exchange, symbol)]  # Возвращаем значение из справочника
+
+    @staticmethod
+    def get_portfolio(primary_board):
+        """Получение портфеля
+
+        :param str primary_board: Площадка, где торгуется тикер
+        :return: Портфель
+        """
+        if primary_board not in Config.Boards:  # Если площадка не существует в справочнике площадки
+            return None  # то портфель не найден
+        return Config.Boards[primary_board][0]  # Возвращаем портфель
+
+    @staticmethod
+    def get_server(primary_board):
+        """Получение торгового сервера для стоп заявок
+
+        :param str primary_board: Площадка, где торгуется тикер
+        :return: Код торгового сервера
+        """
+        if primary_board not in Config.Boards:  # Если площадка не существует в справочнике площадки
+            return None  # то торговый сервер не найден
+        return Config.Boards[primary_board][1]  # Возвращаем торговый сервер
+
+    @staticmethod
+    def get_exchanges(portfolio):
+        """Получение бирж для портфеля
+
+        :param str portfolio: Портфель
+        :return: Кортеж бирж
+        """
+        if portfolio not in Config.Accounts:  # Если портфель не существует в справочнике счетов
+            return None  # то биржи не найдены
+        return Config.Accounts[portfolio]  # Возвращаем торговый сервер
 
     @staticmethod
     def data_name_to_exchange_symbol(dataname):

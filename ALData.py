@@ -41,7 +41,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         self.exchange, self.symbol = self.store.data_name_to_exchange_symbol(self.p.dataname)  # По тикеру получаем биржу и код тикера
         self.historyBars = []  # Исторические бары после применения фильтров
         self.guid = None  # Идентификатор подписки на историю цен
-        self.lastDateTime = 0.0  # Дата/время последнего полученного бара в BackTrader
+        self.lastDateTime = datetime.min  # Дата/время последнего полученного бара в BackTrader
         self.lastHistoryBarReceived = False  # Признак получения последнего бара истории
         self.liveMode = False  # Режим получения баров. False = История, True = Новые бары
 
@@ -103,8 +103,8 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
                     self.put_notification(self.DELAYED)  # Отправляем уведомление об отправке исторических (не новых) баров
                     self.liveMode = False  # Переходим в режим получения истории
         # Все проверки пройдены. Записываем полученный исторический/новый бар
-        self.lastDateTime = date2num(self.get_bar_open_date_time(bar))  # Дату/время открытия бара переводим в формат хранения даты/времени в BackTrader
-        self.lines.datetime[0] = self.lastDateTime  # DateTime
+        self.lastDateTime = dt_open  # Дату/время открытия бара переводим в формат хранения даты/времени в BackTrader
+        self.lines.datetime[0] = date2num(self.lastDateTime)  # DateTime
         self.lines.open[0] = self.store.alor_to_bt_price(self.exchange, self.symbol, bar['open'])  # Open
         self.lines.high[0] = self.store.alor_to_bt_price(self.exchange, self.symbol, bar['high'])  # High
         self.lines.low[0] = self.store.alor_to_bt_price(self.exchange, self.symbol, bar['low'])  # Low

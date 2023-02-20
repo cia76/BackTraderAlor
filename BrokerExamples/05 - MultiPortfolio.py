@@ -33,19 +33,16 @@ class MultiPortfolio(bt.Strategy):
         print('- Свободные средства:', '%.2f' % self.broker.getcash())
         print('- Стоимость позиций :', '%.2f' % self.broker.getvalue())
 
-        self.broker.p.exchange = 'MOEX'  # Биржа
-        self.broker.p.portfolio = Config.PortfolioStocks  # Портфель фондового рынка
-        print(f'\nФондовый рынок ({self.broker.p.portfolio})')
-        print('- Свободные средства:', '%.2f' % self.broker.getcash())
-        print('- Стоимость позиций :', '%.2f' % self.broker.getvalue())
+        print(f'\nФондовый рынок ({Config.PortfolioStocks})')
+        print('- Свободные средства:', '%.2f' % self.broker.getcash(portfolio=Config.PortfolioStocks))
+        print('- Стоимость позиций :', '%.2f' % self.broker.getvalue(portfolio=Config.PortfolioStocks))
 
-        self.broker.p.portfolio = Config.PortfolioFutures  # Портфель срочного рынка
-        print(f'\nСрочный рынок ({self.broker.p.portfolio})')
-        print('- Свободные средства:', '%.2f' % self.broker.getcash())
-        print('- Стоимость позиций :', '%.2f' % self.broker.getvalue())
+        print(f'\nСрочный рынок ({Config.PortfolioFutures})')
+        print('- Свободные средства:', '%.2f' % self.broker.getcash(portfolio=Config.PortfolioFutures))
+        print('- Стоимость позиций :', '%.2f' % self.broker.getvalue(portfolio=Config.PortfolioFutures))
 
         self.broker.p.portfolio = Config.PortfolioStocks  # Портфель фондового рынка
-        print('\nБаланс по тикеру', self.datas[2]._name, ':', '%.2f' % self.broker.getvalue((self.datas[2],)))
+        print('\nБаланс по тикеру', self.datas[2]._name, ':', '%.2f\n' % self.broker.getvalue((self.datas[2],)))
 
     def next(self):
         """Получение следующего исторического/нового бара"""
@@ -61,8 +58,9 @@ class MultiPortfolio(bt.Strategy):
                 if order and order.status == bt.Order.Accepted:  # Если заявка на бирже (принята брокером)
                     self.cancel(order)  # то снимаем ее
                 limit_price = d.close[0] * (1 - self.p.LimitPct / 100)  # На n% ниже цены закрытия
-                portfolio = Config.PortfolioStocks if d == self.datas[1] else Config.PortfolioFutures  # Первый тикер торгуем по портфелю фондового рынка, второй - по портфеллю срочного рынка
-                self.orders[d._name] = self.buy(data=d, exectype=bt.Order.Limit, price=limit_price, portfolio=portfolio)  # Лимитная заявка на покупку для заданного портфеля
+                # portfolio = Config.PortfolioStocks if d == self.datas[1] else Config.PortfolioFutures  # Первый тикер торгуем по портфелю фондового рынка, второй - по портфеллю срочного рынка
+                # self.orders[d._name] = self.buy(data=d, exectype=bt.Order.Limit, price=limit_price, portfolio=portfolio)  # Лимитная заявка на покупку для заданного портфеля
+                self.orders[d._name] = self.buy(data=d, exectype=bt.Order.Limit, price=limit_price)  # Если не указать портфель, то он поставится по умолчанию для площадки тикера
             else:  # Если позиция есть
                 self.orders[d._name] = self.close()  # Заявка на закрытие позиции по рыночной цене
 
