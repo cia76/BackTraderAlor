@@ -165,7 +165,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
     def unsubscribe(self):
         """Отмена всех подписок"""
         subscriptions = self.store.provider.subscriptions.copy()  # Работаем с копией подписок, т.к. будем удалять элементы
-        for guid, subscription_request in subscriptions:  # Пробегаемся по всем подпискам
+        for guid, subscription_request in subscriptions.items():  # Пробегаемся по всем подпискам
             if subscription_request['opcode'] in \
                     ('PositionsGetAndSubscribeV2',  # Если это подписка на позиции (получение свободных средств и стоимости позиций)
                      'TradesGetAndSubscribeV2',  # или подписка на сделки (изменение статусов заявок)
