@@ -21,13 +21,21 @@ class MetaSingleton(MetaParams):
 
 
 class ALStore(with_metaclass(MetaSingleton, object)):
-    """Хранилище Alor"""
+    """Хранилище Алор. Работает с мультисчетами и мультипортфелями
+
+    В параметр providers передавать список счетов в виде словаря с ключами:
+    - provider_name - Название провайдера. Должно быть уникальным
+    - demo - Режим демо торговли. Можно не указывать. Тогда будет выбран режим реальной торговли
+    - username - Имя пользователя из Config
+    - refresh_token - Токен из Config
+
+    Пример использования:
+    provider1 = dict(provider_name='alor_trade', username=Config.UserName, demo=False, refresh_token=Config.RefreshToken)  # Торговый счет Алор
+    provider2 = dict(provider_name='alor_iia', username=ConfigIIA.UserName, demo=False, refresh_token=ConfigIIA.RefreshToken)  # ИИС Алор
+    store = ALStore(providers=[provider1, provider2])  # Мультисчет
+    """
     params = (
-        ('UserName', None),  # Имя пользователя из Config
-        ('RefreshToken', None),  # Токен из Config
-        ('Boards', None),  # Привязка портфелей/серверов для стоп заявок к площадкам из Config
-        ('Accounts', None),  # Привязка портфелей к биржам из Config
-        ('Demo', False),  # Режим демо торговли. По умолчанию установлен режим реальной торговли
+        ('providers', None),  # Список провайдеров счетов в виде словаря
     )
 
     BrokerCls = None  # Класс брокера будет задан из брокера
@@ -35,39 +43,39 @@ class ALStore(with_metaclass(MetaSingleton, object)):
 
     @classmethod
     def getdata(cls, *args, **kwargs):
-        """Returns DataCls with args, kwargs"""
+        """Возвращает новый экземпляр класса данных с заданными параметрами"""
         return cls.DataCls(*args, **kwargs)
 
     @classmethod
     def getbroker(cls, *args, **kwargs):
-        """Returns broker with *args, **kwargs from registered BrokerCls"""
+        """Возвращает новый экземпляр класса брокера с заданными параметрами"""
         return cls.BrokerCls(*args, **kwargs)
 
     def __init__(self):
         super(ALStore, self).__init__()
         self.notifs = collections.deque()  # Уведомления хранилища
-        self.provider = AlorPy(self.p.UserName, self.p.RefreshToken, self.p.Demo)  # Работа с Alor OpenAPI V2 из Python https://alor.dev/docs с именем пользователя и токеном
+        self.providers = {}  # Справочник провайдеров
+        for provider in self.p.providers:  # Пробегаемся по всем провайдерам
+            demo = provider['demo'] if 'demo' in provider else False  # Признак демо счета или реальный счет
+            provider_name = provider['provider_name'] if 'provider_name' in provider else 'default'  # Название провайдера или название по умолчанию
+            self.providers[provider_name] = AlorPy(provider['username'], provider['refresh_token'], demo)  # Работа с Alor OpenAPI V2 из Python https://alor.dev/docs с именем пользователя и токеном
+        self.provider = list(self.providers.values())[0]  # Провайдер по умолчанию для работы со справочниками. Первый счет по ключу name
         self.symbols = {}  # Информация о тикерах
-        self.new_bars = []  # Новые бары по всем подпискам на тикеры из Alor
-        self.portfolios_accounts = {}  # Справочник кодов портфелей/счетов
-        for market in self.provider.GetPortfolios().values():  # Пробегаемся по всем рынкам: Фондовый рынок / Фьючерсы и опционы / Валютный рынок
-            for portfolio in market:  # Пробегаемся по всем портфелям рынка
-                p = portfolio['portfolio']  # Номер портфеля
-                if p in self.p.Accounts:  # Если он есть в справочнике портфелей
-                    self.portfolios_accounts[p] = portfolio['tks']  # то добавляем код портфеля/счета в список
+        self.new_bars = []  # Новые бары по всем подпискам на тикеры из Алор
 
     def start(self):
-        self.provider.OnEntering = lambda: print('- WebSocket Thread: Запуск')
-        self.provider.OnEnter = lambda: print('- WebSocket Thread: Запущен')
-        self.provider.OnConnect = lambda: print('- WebSocket Task: Подключен к серверу')
-        self.provider.OnResubscribe = lambda: print(f'- WebSocket Task: Возобновление подписок ({len(self.provider.subscriptions)})')
-        self.provider.OnReady = lambda: print('- WebSocket Task: Готов')
-        self.provider.OnDisconnect = lambda: print('- WebSocket Task: Отключен от сервера')
-        self.provider.OnTimeout = lambda: print('- WebSocket Task: Таймаут')
-        self.provider.OnError = lambda response: print(f'- WebSocket Task: {response}')
-        self.provider.OnCancel = lambda: print('- WebSocket Task: Отмена')
-        self.provider.OnExit = lambda: print('- WebSocket Thread: Завершение')
-        self.provider.OnNewBar = lambda response: self.new_bars.append(response)  # Обработчик новых баров по подписке из Alor
+        for name, provider in self.providers.items():  # Пробегаемся по всем провайдерам
+            provider.OnEntering = lambda n=name: print(f'- WebSocket Thread({n}): Запуск')
+            provider.OnEnter = lambda n=name: print(f'- WebSocket Thread({n}): Запущен')
+            provider.OnConnect = lambda n=name: print(f'- WebSocket Task({n}): Подключен к серверу')
+            provider.OnResubscribe = lambda n=name: print(f'- WebSocket Task({n}): Возобновление подписок ({len(provider.subscriptions)})')
+            provider.OnReady = lambda n=name: print(f'- WebSocket Task({n}): Готов')
+            provider.OnDisconnect = lambda n=name: print(f'- WebSocket Task({n}): Отключен от сервера')
+            provider.OnTimeout = lambda n=name: print(f'- WebSocket Task({n}): Таймаут')
+            provider.OnError = lambda response,  n=name: print(f'- WebSocket Task({n}): {response}')
+            provider.OnCancel = lambda n=name: print(f'- WebSocket Task({n}): Отмена')
+            provider.OnExit = lambda n=name: print(f'- WebSocket Thread({n}): Завершение')
+            provider.OnNewBar = lambda response,  n=name: self.new_bars.append(dict(provider_name=n, response=response))  # Обработчик новых баров по подписке из Алор
 
     def put_notification(self, msg, *args, **kwargs):
         self.notifs.append((msg, args, kwargs))
@@ -78,8 +86,9 @@ class ALStore(with_metaclass(MetaSingleton, object)):
         return [x for x in iter(self.notifs.popleft, None)]
 
     def stop(self):
-        self.provider.OnNewBar = self.provider.DefaultHandler  # Возвращаем обработчик по умолчанию
-        self.provider.CloseWebSocket()  # Перед выходом закрываем соединение с WebSocket
+        for provider in self.providers.values():  # Пробегаемся по всем значениям провайдеров
+            provider.OnNewBar = provider.DefaultHandler  # Возвращаем обработчик по умолчанию
+            provider.CloseWebSocket()  # Перед выходом закрываем соединение с WebSocket
 
     # Функции
 
@@ -88,46 +97,16 @@ class ALStore(with_metaclass(MetaSingleton, object)):
 
         :param str exchange: Биржа 'MOEX' или 'SPBX'
         :param str symbol: Тикер
-        :param bool reload: Получить информацию с Alor
-        :return: Значение из кэша/Alor или None, если тикер не найден
+        :param bool reload: Получить информацию из Алор
+        :return: Значение из кэша/Алор или None, если тикер не найден
         """
-        if reload or (exchange, symbol) not in self.symbols:  # Если нужно получить информацию с Alor или нет информации о тикере в справочнике
-            symbol_info = self.provider.GetSymbol(exchange, symbol)  # Получаем информацию о тикере с Alor
+        if reload or (exchange, symbol) not in self.symbols:  # Если нужно получить информацию из Алор или нет информации о тикере в справочнике
+            symbol_info = self.provider.GetSymbol(exchange, symbol)  # Получаем информацию о тикере из Алор
             if not symbol_info:  # Если тикер не найден
                 print(f'Информация о {exchange}.{symbol} не найдена')
                 return None  # то возвращаем пустое значение
             self.symbols[(exchange, symbol)] = symbol_info  # Заносим информацию о тикере в справочник
         return self.symbols[(exchange, symbol)]  # Возвращаем значение из справочника
-
-    def get_portfolio(self, primary_board):
-        """Получение портфеля
-
-        :param str primary_board: Площадка, где торгуется тикер
-        :return: Портфель
-        """
-        if primary_board not in self.p.Boards:  # Если площадка не существует в справочнике площадки
-            return None  # то портфель не найден
-        return self.p.Boards[primary_board][0]  # Возвращаем портфель
-
-    def get_server(self, primary_board):
-        """Получение торгового сервера для стоп заявок
-
-        :param str primary_board: Площадка, где торгуется тикер
-        :return: Код торгового сервера
-        """
-        if primary_board not in self.p.Boards:  # Если площадка не существует в справочнике площадки
-            return None  # то торговый сервер не найден
-        return self.p.Boards[primary_board][1]  # Возвращаем торговый сервер
-
-    def get_exchanges(self, portfolio):
-        """Получение бирж для портфеля
-
-        :param str portfolio: Портфель
-        :return: Кортеж бирж
-        """
-        if portfolio not in self.p.Accounts:  # Если портфель не существует в справочнике счетов
-            return None  # то биржи не найдены
-        return self.p.Accounts[portfolio]  # Возвращаем торговый сервер
 
     @staticmethod
     def data_name_to_exchange_symbol(dataname):
@@ -156,12 +135,12 @@ class ALStore(with_metaclass(MetaSingleton, object)):
         return f'{exchange}.{symbol}'
 
     def bt_to_alor_price(self, exchange, symbol, price: float):
-        """Перевод цен из BackTrader в Alor
+        """Перевод цен из BackTrader в Алор
 
         :param str exchange: Биржа 'MOEX' или 'SPBX'
         :param str symbol: Тикер
         :param float price: Цена в BackTrader
-        :return: Цена в Alor
+        :return: Цена в Алор
         """
         si = self.get_symbol_info(exchange, symbol)  # Информация о тикере
         primary_board = si['primary_board']  # Рынок тикера
@@ -172,11 +151,11 @@ class ALStore(with_metaclass(MetaSingleton, object)):
         return round(price, decimals)  # Округляем цену
 
     def alor_to_bt_price(self, exchange, symbol, price: float):
-        """Перевод цен из Alor в BackTrader
+        """Перевод цен из Алор в BackTrader
 
         :param str exchange: Биржа 'MOEX' или 'SPBX'
         :param str symbol: Тикер
-        :param float price: Цена в Alor
+        :param float price: Цена в Алор
         :return: Цена в BackTrader
         """
         si = self.get_symbol_info(exchange, symbol)  # Информация о тикере
