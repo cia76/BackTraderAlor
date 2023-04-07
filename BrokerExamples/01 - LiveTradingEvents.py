@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, timedelta
 import backtrader as bt
 from BackTraderAlor.ALStore import ALStore  # Хранилище Alor
 from AlorPy.Config import Config  # Файл конфигурации
@@ -56,13 +56,16 @@ class LiveTradingEvents(bt.Strategy):
 
 
 if __name__ == '__main__':  # Точка входа при запуске этого скрипта
-    # symbol = 'MOEX.SBER'  # Тикер
-    symbol = 'MOEX.SI-6.23'  # Для фьючерсов: <Код тикера заглавными буквами>-<Месяц экспирации: 3, 6, 9, 12>.<Последние 2 цифры года>
+    symbol = 'MOEX.SBER'  # Тикер
+    # symbol = 'MOEX.SI-6.23'  # Для фьючерсов: <Код тикера заглавными буквами>-<Месяц экспирации: 3, 6, 9, 12>.<Последние 2 цифры года>
+    # symbol = 'MOEX.RTS-6.23'
     cerebro = bt.Cerebro(stdstats=False, quicknotify=True)  # Инициируем "движок" BackTrader. Стандартная статистика сделок и кривой доходности не нужна
-    store = ALStore(providers=[dict(username=Config.UserName, demo=False, refresh_token=Config.RefreshToken)])  # Хранилище Alor
+    today = date.today()  # Сегодняшняя дата без времени
+    week_ago = today - timedelta(days=7)  # Дата неделю назад без времени
+    store = ALStore(providers=[dict(provider_name='alor_trade', username=Config.UserName, demo=False, refresh_token=Config.RefreshToken)])  # Хранилище Alor
     broker = store.getbroker(use_positions=False, boards=Config.Boards, accounts=Config.Accounts)  # Брокер Alor
     cerebro.setbroker(broker)  # Устанавливаем брокера
-    data = store.getdata(dataname=symbol, timeframe=bt.TimeFrame.Minutes, compression=1, fromdate=datetime(2023, 3, 10), live_bars=True)  # Исторические и новые минутные бары за все время
+    data = store.getdata(dataname=symbol, timeframe=bt.TimeFrame.Minutes, compression=1, fromdate=week_ago, live_bars=True)  # Исторические и новые минутные бары за все время
     cerebro.adddata(data)  # Добавляем данные
     cerebro.addstrategy(LiveTradingEvents)  # Добавляем торговую систему
     cerebro.run()  # Запуск торговой системы
