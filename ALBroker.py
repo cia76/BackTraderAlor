@@ -12,9 +12,9 @@ from AlorPy import AlorPy
 
 
 class MetaALBroker(BrokerBase.__class__):
-    def __init__(cls, name, bases, dct):
-        super(MetaALBroker, cls).__init__(name, bases, dct)  # Инициализируем класс брокера
-        ALStore.BrokerCls = cls  # Регистрируем класс брокера в хранилище Алор
+    def __init__(self, name, bases, dct):
+        super(MetaALBroker, self).__init__(name, bases, dct)  # Инициализируем класс брокера
+        ALStore.BrokerCls = self  # Регистрируем класс брокера в хранилище Алор
 
 
 class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
@@ -246,8 +246,8 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             else SellOrder(owner=owner, data=data, size=size, price=price, pricelimit=plimit, exectype=exectype, valid=valid, oco=oco, parent=parent, transmit=transmit)  # Заявка на покупку/продажу
         order.addcomminfo(self.getcommissioninfo(data))  # По тикеру выставляем комиссии в заявку. Нужно для исполнения заявки в BackTrader
         order.addinfo(**kwargs)  # Передаем в заявку все дополнительные свойства из брокера, в т.ч. portfolio, server
-        exchange, symbol = self.store.data_name_to_exchange_symbol(data._name)  # По тикеру получаем биржу и код тикера
-        order.addinfo(exchange=exchange, symbol=symbol)  # Код биржи exchange и тикера symbol
+        exchange, symbol = self.store.data_name_to_exchange_symbol(data._name)  # По тикеру получаем биржу и тикера
+        order.addinfo(exchange=exchange, symbol=symbol)  # В заявку заносим код биржи exchange и тикер symbol
         si = self.store.get_symbol_info(exchange, symbol)  # Информация о тикере
         if not si:  # Если тикер не найден
             print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отклонена. Тикер не найден')
@@ -262,6 +262,8 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                 self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
                 return order  # Возвращаем отклоненную заявку
             order.addinfo(portfolio=portfolio)  # то ставим портфель из брокера
+        else:  # Если при постановке заявки портфель был указан
+            portfolio = order.info['portfolio']  # то получаем его
         if not self.is_subscribed(portfolio, exchange):  # Если нет подписок портфеля/биржи
             self.subscribe(portfolio, exchange)  # то подписываемся на события портфеля/биржи
         if oco:  # Если есть связанная заявка
@@ -335,14 +337,14 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             order.reject(self)  # то отклоняем заявку
             self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
             return order  # Возвращаем отклоненную заявку
-        order.submit(self)  # Отправляем заявку на биржу (Order.Submitted)
+        order.submit(self)  # Отправляем заявку на биржу
         self.notifs.append(order.clone())  # Уведомляем брокера об отправке заявки на биржу
         if not response:  # Если при отправке заявки на биржу произошла веб ошибка
             print(f'Постановка заявки по тикеру {exchange}.{symbol} отклонена. Ошибка веб сервиса')
             order.reject(self)  # то отклоняем заявку
             self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
             return order  # Возвращаем отклоненную заявку
-        order.accept(self)  # Заявка принята на бирже (Order.Accepted)
+        order.accept(self)  # Заявка принята на бирже
         self.orders[order.ref] = order  # Сохраняем в списке заявок, отправленных на биржу
         order.addinfo(order_number=response['orderNumber'])  # Сохраняем пришедший номер заявки на бирже
         return order  # Возвращаем заявку
@@ -406,7 +408,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         order: Order = self.get_order(order_number)  # Заявка BackTrader
         if not order:  # Если заявки нет в BackTrader (не из автоторговли)
             return  # то выходим, дальше не продолжаем
-        order.cancel()  # Отменяем существующую заявку (Order.Canceled)
+        order.cancel()  # Отменяем существующую заявку
         self.notifs.append(order.clone())  # Уведомляем брокера об отмене заявки
         self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки (Canceled)
 
