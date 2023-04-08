@@ -51,8 +51,10 @@ class ALStore(with_metaclass(MetaSingleton, object)):
         """Возвращает новый экземпляр класса брокера с заданными параметрами"""
         return cls.BrokerCls(*args, **kwargs)
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         super(ALStore, self).__init__()
+        if 'providers' in kwargs:  # Если хранилище создаем из данных/брокера (не рекомендуется)
+            self.p.providers = kwargs['providers']  # то список провайдеров берем из переданного ключа providers
         self.notifs = collections.deque()  # Уведомления хранилища
         self.providers = {}  # Справочник провайдеров
         for provider in self.p.providers:  # Пробегаемся по всем провайдерам
