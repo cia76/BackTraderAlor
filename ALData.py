@@ -10,9 +10,9 @@ from AlorPy import AlorPy
 
 
 class MetaALData(AbstractDataBase.__class__):
-    def __init__(cls, name, bases, dct):
-        super(MetaALData, cls).__init__(name, bases, dct)  # Инициализируем класс данных
-        ALStore.DataCls = cls  # Регистрируем класс данных в хранилище Алор
+    def __init__(self, name, bases, dct):
+        super(MetaALData, self).__init__(name, bases, dct)  # Инициализируем класс данных
+        ALStore.DataCls = self  # Регистрируем класс данных в хранилище Алор
 
 
 class ALData(with_metaclass(MetaALData, AbstractDataBase)):
