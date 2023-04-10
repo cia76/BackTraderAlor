@@ -232,8 +232,8 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         :return: Заявка BackTrader или None
         """
         for order in self.orders.values():  # Пробегаемся по всем заявкам на бирже
-            if order.info['order_number'] == order_number:  # Если значение совпадает с номером заявки на бирже
-                return order  # то возвращаем заявкe BackTrader
+            if order.info['order_number'] == order_number:  # Если нашли совпадение с номером заявки на бирже
+                return order  # то возвращаем заявку BackTrader
         return None  # иначе, ничего не найдено
 
     def create_order(self, owner, data, size, price=None, plimit=None, exectype=None, valid=None, oco=None, parent=None, transmit=True, is_buy=True, **kwargs):
@@ -248,6 +248,11 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         order.addinfo(**kwargs)  # Передаем в заявку все дополнительные свойства из брокера, в т.ч. portfolio, server
         exchange, symbol = self.store.data_name_to_exchange_symbol(data._name)  # По тикеру получаем биржу и тикера
         order.addinfo(exchange=exchange, symbol=symbol)  # В заявку заносим код биржи exchange и тикер symbol
+        if order.exectype in (Order.Close, Order.StopTrail, Order.StopTrailLimit, Order.Historical):  # Эти типы заявок не реализованы
+            print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отклонена. Работа с заявками {order.exectype} не реализована')
+            order.reject(self)  # то отклоняем заявку
+            self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
+            return order  # Возвращаем отклоненную заявку
         si = self.store.get_symbol_info(exchange, symbol)  # Информация о тикере
         if not si:  # Если тикер не найден
             print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отклонена. Тикер не найден')
@@ -266,6 +271,26 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             portfolio = order.info['portfolio']  # то получаем его
         if not self.is_subscribed(portfolio, exchange):  # Если нет подписок портфеля/биржи
             self.subscribe(portfolio, exchange)  # то подписываемся на события портфеля/биржи
+        if order.exectype != Order.Market and not order.price:  # Если цена заявки не указана для всех заявок, кроме рыночной
+            price_type = 'Лимитная' if order.exectype == Order.Limit else 'Стоп'  # Для стоп заявок это будет триггерная (стоп) цена
+            print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отклонена. {price_type} цена (price) не указана для заявки типа {order.exectype}')
+            order.reject(self)  # то отклоняем заявку
+            self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
+            return order  # Возвращаем отклоненную заявку
+        if order.exectype == Order.StopLimit and not order.pricelimit:  # Если лимитная цена не указана для стоп-лимитной заявки
+            print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отклонена. Лимитная цена (pricelimit) не указана для заявки типа {order.exectype}')
+            order.reject(self)  # то отклоняем заявку
+            self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
+            return order  # Возвращаем отклоненную заявку
+        if order.exectype in (Order.Stop, Order.StopLimit):  # Для стоп/стоп-лимитных заявок
+            if 'server' not in order.info:  # Если для стоп заявки не указан торговый сервер
+                server = self.get_server(si['primary_board'])  # то ищем его в справочнике площадки
+                if not server:  # Если торговый сервер не найден
+                    print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отклонена. Торговый сервер (server) не найден для заявки типа {order.exectype}')
+                    order.reject(self)  # то отклоняем заявку
+                    self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
+                    return order  # Возвращаем отклоненную заявку
+                order.addinfo(server=server)  # Указываем торговый сервер для стоп заявок
         if oco:  # Если есть связанная заявка
             self.ocos[order.ref] = oco.ref  # то заносим в список связанных заявок
         if not transmit or parent:  # Для родительской/дочерних заявок
@@ -295,48 +320,21 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         symbol = order.info['symbol']  # Код тикера
         si = self.store.get_symbol_info(exchange, symbol)  # Информация о тикере
         quantity = abs(order.size // si['lotsize'])  # Размер позиции в лотах. В Алор всегда передается положительный размер лота
-        server = stop_price = None  # Торговый сервер, счет, стоп и лимитную цены получим дальше
-        if order.exectype in (Order.Stop, Order.StopLimit):  # Для стоп/стоп-лимитных заявок
-            if not order.price:  # Если стоп цена не указана
-                print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отклонена. Стоп цена (price) не указана для заявки типа {order.exectype}')
-                order.reject(self)  # то отклоняем заявку
-                self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
-                return order  # Возвращаем отклоненную заявку
-            stop_price = self.store.bt_to_alor_price(exchange, symbol, order.price)  # получаем стоп цену
-            if 'server' not in order.info:  # Если не указан торговый сервер
-                server = self.get_server(si['primary_board'])  # то ищем его в справочнике площадки
-                if not server:  # Если торговый сервер не найден
-                    print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отклонена. Торговый сервер (server) не найден для заявки типа {order.exectype}')
-                    order.reject(self)  # то отклоняем заявку
-                    self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
-                    return order  # Возвращаем отклоненную заявку
-                order.addinfo(server=server)  # Указываем торговый сервер для стоп заявок
-            server = order.info['server']  # Торговый сервер для стоп заявок
+        response = None  # Результат запроса
         if order.exectype == Order.Market:  # Рыночная заявка
             response = self.provider.CreateMarketOrder(portfolio, exchange, symbol, side, quantity)
         elif order.exectype == Order.Limit:  # Лимитная заявка
-            if not order.price:  # Если цена не указана
-                print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отклонена. Лимитная цена (price) не указана для заявки типа {order.exectype}')
-                order.reject(self)  # то отклоняем заявку
-                self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
-                return order  # Возвращаем отклоненную заявку
-            limit_price = self.store.bt_to_alor_price(exchange, symbol, order.price)  # получаем лимитную цену
+            limit_price = self.store.bt_to_alor_price(exchange, symbol, order.price)  # Лимитная цена
             response = self.provider.CreateLimitOrder(portfolio, exchange, symbol, side, quantity, limit_price)
         elif order.exectype == Order.Stop:  # Стоп заявка
-            response = self.provider.CreateTakeProfitOrder(server, account, portfolio, exchange, symbol, side, quantity, stop_price)
+            server = order.info['server']  # Торговый сервер для стоп заявок
+            stop_price = self.store.bt_to_alor_price(exchange, symbol, order.price)  # Стоп цена
+            response = self.provider.CreateStopLossOrder(server, account, portfolio, exchange, symbol, side, quantity, stop_price)
         elif order.exectype == Order.StopLimit:  # Стоп-лимитная заявка
-            if not order.pricelimit:  # Если цена не указана
-                print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отклонена. Лимитная цена (pricelimit) не указана для заявки типа {order.exectype}')
-                order.reject(self)  # то отклоняем заявку
-                self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
-                return order  # Возвращаем отклоненную заявку
-            limit_price = self.store.bt_to_alor_price(exchange, symbol, order.pricelimit)  # получаем лимитную цену
-            response = self.provider.CreateTakeProfitLimitOrder(server, account, portfolio, exchange, symbol, side, quantity, stop_price, limit_price)
-        else:  # Close, StopTrail, StopTrailLimit, Historical заявки не реализованы
-            print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отклонена. Работа с заявками {order.exectype} не реализована')
-            order.reject(self)  # то отклоняем заявку
-            self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
-            return order  # Возвращаем отклоненную заявку
+            server = order.info['server']  # Торговый сервер для стоп заявок
+            stop_price = self.store.bt_to_alor_price(exchange, symbol, order.price)  # Стоп цена
+            limit_price = self.store.bt_to_alor_price(exchange, symbol, order.pricelimit)  # Лимитная цена
+            response = self.provider.CreateStopLossLimitOrder(server, account, portfolio, exchange, symbol, side, quantity, stop_price, limit_price)
         order.submit(self)  # Отправляем заявку на биржу
         self.notifs.append(order.clone())  # Уведомляем брокера об отправке заявки на биржу
         if not response:  # Если при отправке заявки на биржу произошла веб ошибка
@@ -416,7 +414,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         """Обработка сделок"""
         data = response['data']  # Данные сделки
         order_no = data['orderno']  # Номер заявки из сделки
-        order = self.get_order(order_no)  # Номер заявки BackTrader
+        order = self.get_order(order_no)  # Заявка BackTrader
         if not order:  # Если заявки нет в BackTrader (не из автоторговли)
             return  # то выходим, дальше не продолжаем
         size = data['qtyUnits']  # Кол-во в штуках. Всегда положительное
