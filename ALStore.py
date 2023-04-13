@@ -220,9 +220,7 @@ class Schedule:
         w_market = d_market.weekday()  # День недели даты на бирже
         if w_market in (5, 6):  # Если биржа на выходных не работает, и задан выходной день
             d_market += timedelta(7 - w_market)  # То будем ждать первой торговой сессии понедельника
-        dt_next_session = self.market_timezone.localize(
-            datetime(d_market.year, d_market.month, d_market.day, session.time_begin.hour, session.time_begin.minute,
-                     session.time_begin.second))
+        dt_next_session = datetime(d_market.year, d_market.month, d_market.day, session.time_begin.hour, session.time_begin.minute, session.time_begin.second)
         return dt_next_session - dt_market
 
 
