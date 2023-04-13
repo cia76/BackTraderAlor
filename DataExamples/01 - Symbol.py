@@ -1,6 +1,6 @@
 from datetime import datetime, date, timedelta, time
 from backtrader import Cerebro, TimeFrame
-from BackTraderAlor.ALStore import ALStore, MOEXStocks, MOEXFutures, MOEXCustom  # Хранилище Alor. Расписания торгов фондового/срочного рынков
+from BackTraderAlor.ALStore import ALStore, MOEXStocks, MOEXFutures  # Хранилище Alor. Расписания торгов фондового/срочного рынков
 from AlorPy.Config import Config  # Файл конфигурации
 import Strategy  # Торговые системы
 
