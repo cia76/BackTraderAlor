@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta, time
+from time import sleep
 
 from backtrader.feed import AbstractDataBase
 from backtrader.utils.py3 import with_metaclass
 from backtrader import TimeFrame, date2num
 
-from BackTraderAlor import ALStore
+from BackTraderAlor import ALStore, MOEXStocks
 
 from AlorPy import AlorPy
 
@@ -20,6 +21,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
     params = (
         ('provider_name', None),  # Название провайдера. Если не задано, то первое название по ключу name
         ('four_price_doji', False),  # False - не пропускать дожи 4-х цен, True - пропускать
+        ('schedule', MOEXStocks()),  # Московская биржа: Фондовый рынок
         ('live_bars', False),  # False - только история, True - история и новые бары
     )
 
@@ -108,6 +110,10 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
                     self.last_history_bar_received = False  # то получили не последний бар истории
                     self.put_notification(self.DELAYED)  # Отправляем уведомление об отправке исторических (не новых) баров
                     self.live_mode = False  # Переходим в режим получения истории
+                else:  # В остальных случаях
+                    delay = self.p.schedule.time_until_trade(time_market_now).total_seconds()  # Нужно ли подождать до открытия биржи
+                    if delay > 0:  # Если нужно подождать
+                        sleep(delay)  # то ждем
         # Все проверки пройдены. Записываем полученный исторический/новый бар
         self.lines.datetime[0] = date2num(self.get_bar_open_date_time(bar))  # DateTime
         self.lines.open[0] = self.store.alor_to_bt_price(self.exchange, self.symbol, bar['open'])  # Open
