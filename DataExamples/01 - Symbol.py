@@ -1,16 +1,16 @@
 from datetime import datetime, date, timedelta, time
 from backtrader import Cerebro, TimeFrame
-from BackTraderAlor.ALStore import ALStore, MOEXStocks, MOEXFutures  # Хранилище Alor. Расписания торгов фондового/срочного рынков
+from BackTraderAlor.ALStore import ALStore, MOEXStocks, MOEXFutures, MOEXCustom  # Хранилище Alor. Расписания торгов фондового/срочного рынков
 from AlorPy.Config import Config  # Файл конфигурации
 import Strategy  # Торговые системы
 
 # Исторические/новые бары тикера
 if __name__ == '__main__':  # Точка входа при запуске этого скрипта
     symbol = 'MOEX.SBER'  # Тикер в формате <Код биржи MOEX/SPBX>.<Код тикера>
-    session = MOEXStocks()  # Расписание торгов фондового рынка
+    schedule = MOEXStocks()  # Расписание торгов фондового рынка
     # symbol = 'MOEX.Si-6.23'  # Для фьючерсов: <Код тикера>-<Месяц экспирации: 3, 6, 9, 12>.<Две последнии цифры года>
     # symbol = 'MOEX.SiM3'  # или <Код тикера><Месяц экспирации: 3-H, 6-M, 9-U, 12-Z><Последняя цифра года>
-    # session = MOEXFutures()  # Расписание торгов срочного рынка
+    # schedule = MOEXFutures()  # Расписание торгов срочного рынка
     store = ALStore(providers=[dict(provider_name='alor_trade', username=Config.UserName, demo=False, refresh_token=Config.RefreshToken)])  # Хранилище Alor
     cerebro = Cerebro(stdstats=False)  # Инициируем "движок" BackTrader. Стандартная статистика сделок и кривой доходности не нужна
     today = date.today()  # Сегодняшняя дата без времени
@@ -32,7 +32,7 @@ if __name__ == '__main__':  # Точка входа при запуске это
     # data = store.getdata(dataname=symbol, timeframe=TimeFrame.Minutes, compression=5, fromdate=week_ago, todate=today, sessionstart=time(10, 5), sessionend=time(11, 0))
 
     # 6. Исторические и новые минутные бары с начала сегодняшней сессии
-    data = store.getdata(dataname=symbol, timeframe=TimeFrame.Minutes, compression=1, fromdate=today, session=session, live_bars=True)
+    data = store.getdata(dataname=symbol, timeframe=TimeFrame.Minutes, compression=1, fromdate=today, schedule=schedule, live_bars=True)
 
     cerebro.adddata(data)  # Добавляем данные
     cerebro.addstrategy(Strategy.PrintStatusAndBars)  # Добавляем торговую систему
