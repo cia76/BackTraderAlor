@@ -5,7 +5,7 @@ from backtrader.feed import AbstractDataBase
 from backtrader.utils.py3 import with_metaclass
 from backtrader import TimeFrame, date2num
 
-from BackTraderAlor import ALStore, MOEXStocks
+from BackTraderAlor import ALStore
 
 from AlorPy import AlorPy
 
@@ -21,7 +21,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
     params = (
         ('provider_name', None),  # Название провайдера. Если не задано, то первое название по ключу name
         ('four_price_doji', False),  # False - не пропускать дожи 4-х цен, True - пропускать
-        ('schedule', MOEXStocks()),  # Московская биржа: Фондовый рынок
+        ('schedule', None),  # Расписание работы биржи
         ('live_bars', False),  # False - только история, True - история и новые бары
     )
 
@@ -99,7 +99,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
                 return None  # то пропускаем бар, будем заходить еще
             self.dt_last_open = dt_open  # Запоминаем дату/время открытия пришедшего бара для будущих сравнений
             time_market_now = self.get_alor_date_time_now()  # Текущее биржевое время из Алор
-            if self.last_bar_received:  # Если получили последний бар
+            if self.last_bar_received and self.p.schedule:  # Если получили последний бар, и задано расписание биржи
                 delay_seconds = self.p.schedule.time_until_trade(time_market_now).total_seconds()  # Сколько секунд нужно подождать до начала сессии биржи
                 if delay_seconds > 0:  # Если нужно подождать
                     sleep(delay_seconds)  # то ждем
