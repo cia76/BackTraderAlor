@@ -49,6 +49,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         self.history_bars = []  # Исторические бары после применения фильтров
         self.guid = None  # Идентификатор подписки на историю цен
         self.dt_last_open = datetime.min  # Дата/время открытия последнего полученного бара в BackTrader
+        self.last_bar_received = False  # Получен последний бар
         self.live_mode = False  # Режим получения баров. False = История, True = Новые бары
 
     def setenvironment(self, env):
@@ -87,7 +88,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
                         if b['provider_name'] == self.provider_name and b['response']['guid'] == self.guid]  # бары провайдера с guid подписки
             if len(new_bars) == 0:  # Если новый бар еще не появился
                 return None  # то нового бара нет, будем заходить еще
-            last_bar_received = len(new_bars) == 1  # Если в хранилище остался 1 бар, то мы будем получать последний возможный бар
+            self.last_bar_received = len(new_bars) == 1  # Если в хранилище остался 1 бар, то мы будем получать последний возможный бар
             new_bar = new_bars[0]  # Берем первый бар из хранилища
             self.store.new_bars.remove(new_bar)  # Убираем его из хранилища
             bar = new_bar['response']['data']  # С данными этого бара будем работать
@@ -98,14 +99,14 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
                 return None  # то пропускаем бар, будем заходить еще
             self.dt_last_open = dt_open  # Запоминаем дату/время открытия пришедшего бара для будущих сравнений
             time_market_now = self.get_alor_date_time_now()  # Текущее биржевое время из Алор
-            if last_bar_received:  # Если получили последний бар
+            if self.last_bar_received:  # Если получили последний бар
                 delay_seconds = self.p.schedule.time_until_trade(time_market_now).total_seconds()  # Сколько секунд нужно подождать до начала сессии биржи
                 if delay_seconds > 0:  # Если нужно подождать
                     sleep(delay_seconds)  # то ждем
-            if last_bar_received and not self.live_mode:  # Если получили последний бар и еще не находимся в режиме получения новых баров (LIVE)
+            if self.last_bar_received and not self.live_mode:  # Если получили последний бар и еще не находимся в режиме получения новых баров (LIVE)
                 self.put_notification(self.LIVE)  # Отправляем уведомление о получении новых баров
                 self.live_mode = True  # Переходим в режим получения новых баров (LIVE)
-            elif self.live_mode and not last_bar_received:  # Если находимся в режиме получения новых баров (LIVE)
+            elif self.live_mode and not self.last_bar_received:  # Если находимся в режиме получения новых баров (LIVE)
                 self.put_notification(self.DELAYED)  # Отправляем уведомление об отправке исторических (не новых) баров
                 self.live_mode = False  # Переходим в режим получения истории
         # Все проверки пройдены. Записываем полученный исторический/новый бар
@@ -175,5 +176,6 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         - Если получили последний бар истории, то запрашием текущие дату и время с сервера Алор
         - Если находимся в режиме получения истории, то переводим текущие дату и время с компьютера в МСК
         """
-        return self.provider.UTCTimeStampToMskDatetime(self.provider.GetTime()) if self.last_history_bar_received\
+        return self.provider.UTCTimeStampToMskDatetime(self.provider.GetTime())\
+            if self.last_bar_received\
             else datetime.now(self.provider.tzMsk).replace(tzinfo=None)
