@@ -48,8 +48,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         self.exchange, self.symbol = self.store.data_name_to_exchange_symbol(self.p.dataname)  # По тикеру получаем биржу и код тикера
         self.history_bars = []  # Исторические бары после применения фильтров
         self.guid = None  # Идентификатор подписки на историю цен
-        self.last_datetime = datetime.min  # Дата/время последнего полученного бара в BackTrader
-        self.last_history_bar_received = False  # Признак получения последнего бара истории
+        self.dt_last_open = datetime.min  # Дата/время открытия последнего полученного бара в BackTrader
         self.live_mode = False  # Режим получения баров. False = История, True = Новые бары
 
     def setenvironment(self, env):
@@ -88,32 +87,27 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
                         if b['provider_name'] == self.provider_name and b['response']['guid'] == self.guid]  # бары провайдера с guid подписки
             if len(new_bars) == 0:  # Если новый бар еще не появился
                 return None  # то нового бара нет, будем заходить еще
+            last_bar_received = len(new_bars) == 1  # Если в хранилище остался 1 бар, то мы будем получать последний возможный бар
             new_bar = new_bars[0]  # Берем первый бар из хранилища
             self.store.new_bars.remove(new_bar)  # Убираем его из хранилища
             bar = new_bar['response']['data']  # С данными этого бара будем работать
             if not self.is_bar_valid(bar):  # Если бар не соответствует всем условиям выборки
                 return None  # то пропускаем бар, будем заходить еще
             dt_open = self.get_bar_open_date_time(bar)  # Дата/время открытия бара
-            if dt_open <= self.last_datetime:  # Если пришел бар из прошлого
+            if dt_open <= self.dt_last_open:  # Если пришел бар из прошлого (дата открытия меньше последней даты открытия)
                 return None  # то пропускаем бар, будем заходить еще
-            self.last_datetime = dt_open  # Запоминаем дату/время пришедшего бара для будущих сравнений
-            dt_next_bar_close = self.get_bar_close_date_time(dt_open, 2)  # Биржевое время закрытия следующего бара
+            self.dt_last_open = dt_open  # Запоминаем дату/время открытия пришедшего бара для будущих сравнений
             time_market_now = self.get_alor_date_time_now()  # Текущее биржевое время из Алор
-            if not self.live_mode:  # Если еще не находимся в режиме получения новых баров (LIVE)
-                if not self.last_history_bar_received and dt_next_bar_close > time_market_now:  # Если еще не получали последнего бара истории, и следующий бар закроется в будущем (т.к. пришедший бар закрылся в прошлом)
-                    self.last_history_bar_received = True  # то получили последний бар истории
-                elif self.last_history_bar_received:  # Если уже получили последний бар истории
-                    self.put_notification(self.LIVE)  # Отправляем уведомление о получении новых баров
-                    self.live_mode = True  # Переходим в режим получения новых баров (LIVE)
-            else:  # Если находимся в режиме получения новых баров (LIVE)
-                if dt_next_bar_close <= time_market_now:  # Если следующий бар закроется в прошлом
-                    self.last_history_bar_received = False  # то получили не последний бар истории
-                    self.put_notification(self.DELAYED)  # Отправляем уведомление об отправке исторических (не новых) баров
-                    self.live_mode = False  # Переходим в режим получения истории
-                else:  # В остальных случаях
-                    delay = self.p.schedule.time_until_trade(time_market_now).total_seconds()  # Нужно ли подождать до открытия биржи
-                    if delay > 0:  # Если нужно подождать
-                        sleep(delay)  # то ждем
+            if last_bar_received:  # Если получили последний бар
+                delay_seconds = self.p.schedule.time_until_trade(time_market_now).total_seconds()  # Сколько секунд нужно подождать до начала сессии биржи
+                if delay_seconds > 0:  # Если нужно подождать
+                    sleep(delay_seconds)  # то ждем
+            if last_bar_received and not self.live_mode:  # Если получили последний бар и еще не находимся в режиме получения новых баров (LIVE)
+                self.put_notification(self.LIVE)  # Отправляем уведомление о получении новых баров
+                self.live_mode = True  # Переходим в режим получения новых баров (LIVE)
+            elif self.live_mode and not last_bar_received:  # Если находимся в режиме получения новых баров (LIVE)
+                self.put_notification(self.DELAYED)  # Отправляем уведомление об отправке исторических (не новых) баров
+                self.live_mode = False  # Переходим в режим получения истории
         # Все проверки пройдены. Записываем полученный исторический/новый бар
         self.lines.datetime[0] = date2num(self.get_bar_open_date_time(bar))  # DateTime
         self.lines.open[0] = self.store.alor_to_bt_price(self.exchange, self.symbol, bar['open'])  # Open
