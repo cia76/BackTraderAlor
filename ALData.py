@@ -45,7 +45,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         self.store = ALStore(**kwargs)  # Передаем параметры в хранилище Алор. Может работать самостоятельно, не через хранилище
         self.provider_name = self.p.provider_name if self.p.provider_name else list(self.store.providers.keys())[0]  # Название провайдера, или первое название по ключу name
         self.provider: AlorPy = self.store.providers[self.provider_name]  # Провайдер
-        self.exchange, self.symbol = self.provider.data_name_to_exchange_symbol(self.p.dataname)  # По тикеру получаем биржу и код тикера
+        self.exchange, self.symbol = self.provider.dataname_to_exchange_symbol(self.p.dataname)  # По тикеру получаем биржу и код тикера
         self.history_bars = []  # Исторические бары после применения фильтров
         self.guid = None  # Идентификатор подписки на историю цен
         self.dt_last_open = datetime.min  # Дата/время открытия последнего полученного бара в BackTrader

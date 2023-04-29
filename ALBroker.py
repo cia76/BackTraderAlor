@@ -80,7 +80,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             value = 0  # Будем набирать стоимость позиций
             if datas is not None:  # Если получаем по тикерам
                 for data in datas:  # Пробегаемся по всем тикерам
-                    exchange, symbol = self.provider.data_name_to_exchange_symbol(data._name)  # По тикеру получаем биржу и код тикера
+                    exchange, symbol = self.provider.dataname_to_exchange_symbol(data._name)  # По тикеру получаем биржу и код тикера
                     si = self.provider.get_symbol_info(exchange, symbol)  # Информация о тикере
                     if not si:  # Если тикер не найден
                         continue  # то переходим к следующему тикеру, дальше не продолжаем
@@ -219,7 +219,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                 positions = self.provider.get_positions(portfolio, exchange, True)  # Получаем все позиции без денежной позиции
                 for position in positions:  # Пробегаемся по всем позициям
                     symbol = position['symbol']  # Тикер
-                    dataname = self.provider.exchange_symbol_to_data_name(exchange, symbol)  # Название тикера
+                    dataname = self.provider.exchange_symbol_to_dataname(exchange, symbol)  # Название тикера
                     si = self.provider.get_symbol_info(exchange, symbol)  # Информация о тикере
                     size = position['qty'] * si['lotsize']  # Кол-во в штуках. Отрицательное для коротких позиций
                     price = round(position['volume'] / size, 2)  # Цена входа
@@ -246,7 +246,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             else SellOrder(owner=owner, data=data, size=size, price=price, pricelimit=plimit, exectype=exectype, valid=valid, oco=oco, parent=parent, transmit=transmit)  # Заявка на покупку/продажу
         order.addcomminfo(self.getcommissioninfo(data))  # По тикеру выставляем комиссии в заявку. Нужно для исполнения заявки в BackTrader
         order.addinfo(**kwargs)  # Передаем в заявку все дополнительные свойства из брокера, в т.ч. portfolio, server
-        exchange, symbol = self.provider.data_name_to_exchange_symbol(data._name)  # По тикеру получаем биржу и тикера
+        exchange, symbol = self.provider.dataname_to_exchange_symbol(data._name)  # По тикеру получаем биржу и тикера
         order.addinfo(exchange=exchange, symbol=symbol)  # В заявку заносим код биржи exchange и тикер symbol
         if order.exectype in (Order.Close, Order.StopTrail, Order.StopTrailLimit, Order.Historical):  # Эти типы заявок не реализованы
             print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отклонена. Работа с заявками {order.exectype} не реализована')
