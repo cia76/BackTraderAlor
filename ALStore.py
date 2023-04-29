@@ -66,11 +66,11 @@ class ALStore(with_metaclass(MetaSingleton, object)):
             provider_name = provider['provider_name'] if 'provider_name' in provider else 'default'  # Название провайдера или название по умолчанию
             self.providers[provider_name] = AlorPy(provider['username'], provider['refresh_token'], demo)  # Работа с Alor OpenAPI V2 из Python https://alor.dev/docs с именем пользователя и токеном
         self.provider = list(self.providers.values())[0]  # Провайдер по умолчанию для работы со справочниками. Первый счет по ключу name
-        self.symbols = {}  # Информация о тикерах
         self.new_bars = []  # Новые бары по всем подпискам на тикеры из Алор
 
     def start(self):
         for name, provider in self.providers.items():  # Пробегаемся по всем провайдерам
+            # События WebSocket Thread/Task для понимания, что происходит с провайдером
             provider.OnEntering = lambda n=name: print(f'- WebSocket Thread({n}): Запуск')
             provider.OnEnter = lambda n=name: print(f'- WebSocket Thread({n}): Запущен')
             provider.OnConnect = lambda n=name: print(f'- WebSocket Task({n}): Подключен к серверу')
@@ -81,7 +81,7 @@ class ALStore(with_metaclass(MetaSingleton, object)):
             provider.OnError = lambda response,  n=name: print(f'- WebSocket Task({n}): {response}')
             provider.OnCancel = lambda n=name: print(f'- WebSocket Task({n}): Отмена')
             provider.OnExit = lambda n=name: print(f'- WebSocket Thread({n}): Завершение')
-            provider.OnNewBar = lambda response,  n=name: self.new_bars.append(dict(provider_name=n, response=response))  # Обработчик новых баров по подписке из Алор
+            provider.OnNewBar = lambda response, n=name: self.new_bars.append(dict(provider_name=n, response=response))  # Обработчик новых баров по подписке из Алор
 
     def put_notification(self, msg, *args, **kwargs):
         self.notifs.append((msg, args, kwargs))
@@ -93,82 +93,8 @@ class ALStore(with_metaclass(MetaSingleton, object)):
 
     def stop(self):
         for provider in self.providers.values():  # Пробегаемся по всем значениям провайдеров
-            provider.OnNewBar = provider.DefaultHandler  # Возвращаем обработчик по умолчанию
-            provider.CloseWebSocket()  # Перед выходом закрываем соединение с WebSocket
-
-    # Функции
-
-    def get_symbol_info(self, exchange, symbol, reload=False):
-        """Получение информации тикера
-
-        :param str exchange: Биржа 'MOEX' или 'SPBX'
-        :param str symbol: Тикер
-        :param bool reload: Получить информацию из Алор
-        :return: Значение из кэша/Алор или None, если тикер не найден
-        """
-        if reload or (exchange, symbol) not in self.symbols:  # Если нужно получить информацию из Алор или нет информации о тикере в справочнике
-            symbol_info = self.provider.GetSymbol(exchange, symbol)  # Получаем информацию о тикере из Алор
-            if not symbol_info:  # Если тикер не найден
-                print(f'Информация о {exchange}.{symbol} не найдена')
-                return None  # то возвращаем пустое значение
-            self.symbols[(exchange, symbol)] = symbol_info  # Заносим информацию о тикере в справочник
-        return self.symbols[(exchange, symbol)]  # Возвращаем значение из справочника
-
-    @staticmethod
-    def data_name_to_exchange_symbol(dataname):
-        """Биржа и код тикера из названия тикера. Если задается без биржи, то по умолчанию ставится MOEX
-
-        :param str dataname: Название тикера
-        :return: Код площадки и код тикера
-        """
-        symbol_parts = dataname.split('.')  # По разделителю пытаемся разбить тикер на части
-        if len(symbol_parts) >= 2:  # Если тикер задан в формате <Биржа>.<Код тикера>
-            exchange = symbol_parts[0]  # Биржа
-            symbol = '.'.join(symbol_parts[1:])  # Код тикера
-        else:  # Если тикер задан без биржи
-            exchange = 'MOEX'  # Биржа по умолчанию
-            symbol = dataname  # Код тикера
-        return exchange, symbol  # Возвращаем биржу и код тикера
-
-    @staticmethod
-    def exchange_symbol_to_data_name(exchange, symbol):
-        """Название тикера из биржи и кода тикера
-
-        :param str exchange: Биржа 'MOEX' или 'SPBX'
-        :param str symbol: Тикер
-        :return: Название тикера
-        """
-        return f'{exchange}.{symbol}'
-
-    def bt_to_alor_price(self, exchange, symbol, price: float):
-        """Перевод цен из BackTrader в Алор
-
-        :param str exchange: Биржа 'MOEX' или 'SPBX'
-        :param str symbol: Тикер
-        :param float price: Цена в BackTrader
-        :return: Цена в Алор
-        """
-        si = self.get_symbol_info(exchange, symbol)  # Информация о тикере
-        primary_board = si['primary_board']  # Рынок тикера
-        if primary_board == 'TQOB':  # Для рынка облигаций
-            price /= 10  # цену делим на 10
-        min_step = si['minstep']  # Минимальный шаг цены
-        decimals = max(0, str(min_step)[::-1].find('.'))  # Из шага цены получаем кол-во знаков после запятой
-        return round(price, decimals)  # Округляем цену
-
-    def alor_to_bt_price(self, exchange, symbol, price: float):
-        """Перевод цен из Алор в BackTrader
-
-        :param str exchange: Биржа 'MOEX' или 'SPBX'
-        :param str symbol: Тикер
-        :param float price: Цена в Алор
-        :return: Цена в BackTrader
-        """
-        si = self.get_symbol_info(exchange, symbol)  # Информация о тикере
-        primary_board = si['primary_board']  # Рынок тикера
-        if primary_board == 'TQOB':  # Для рынка облигаций
-            price *= 10  # цену умножаем на 10
-        return price
+            provider.OnNewBar = provider.default_handler  # Возвращаем обработчик по умолчанию
+            provider.close_web_socket()  # Перед выходом закрываем соединение с WebSocket
 
 
 class Session:

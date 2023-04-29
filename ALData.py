@@ -45,7 +45,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         self.store = ALStore(**kwargs)  # Передаем параметры в хранилище Алор. Может работать самостоятельно, не через хранилище
         self.provider_name = self.p.provider_name if self.p.provider_name else list(self.store.providers.keys())[0]  # Название провайдера, или первое название по ключу name
         self.provider: AlorPy = self.store.providers[self.provider_name]  # Провайдер
-        self.exchange, self.symbol = self.store.data_name_to_exchange_symbol(self.p.dataname)  # По тикеру получаем биржу и код тикера
+        self.exchange, self.symbol = self.provider.data_name_to_exchange_symbol(self.p.dataname)  # По тикеру получаем биржу и код тикера
         self.history_bars = []  # Исторические бары после применения фильтров
         self.guid = None  # Идентификатор подписки на историю цен
         self.dt_last_open = datetime.min  # Дата/время открытия последнего полученного бара в BackTrader
@@ -60,28 +60,28 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
     def start(self):
         super(ALData, self).start()
         self.put_notification(self.DELAYED)  # Отправляем уведомление об отправке исторических (не новых) баров
-        seconds_from = self.provider.MskDatetimeToUTCTimeStamp(self.p.fromdate) if self.p.fromdate else 0  # Дата и время начала выборки
+        seconds_from = self.provider.msk_datetime_to_utc_time_stamp(self.p.fromdate) if self.p.fromdate else 0  # Дата и время начала выборки
         if not self.p.live_bars:  # Если получаем только историю
-            seconds_to = self.provider.MskDatetimeToUTCTimeStamp(self.p.todate) if self.p.todate else 32536799999  # Дата и время окончания выборки
-            history_bars = self.provider.GetHistory(self.exchange, self.symbol, self.timeFrame, seconds_from, seconds_to)['history']  # Получаем бары из Алор
+            seconds_to = self.provider.msk_datetime_to_utc_time_stamp(self.p.todate) if self.p.todate else 32536799999  # Дата и время окончания выборки
+            history_bars = self.provider.get_history(self.exchange, self.symbol, self.timeFrame, seconds_from, seconds_to)['history']  # Получаем бары из Алор
             for bar in history_bars:  # Пробегаемся по всем полученным барам
                 if self.is_bar_valid(bar):  # Если исторический бар соответствует всем условиям выборки
                     self.history_bars.append(bar)  # то добавляем бар
             if len(self.history_bars) > 0:  # Если был получен хотя бы 1 бар
                 self.put_notification(self.CONNECTED)  # то отправляем уведомление о подключении и начале получения исторических баров
         else:  # Если получаем историю и новые бары
-            self.guid = self.provider.BarsGetAndSubscribe(self.exchange, self.symbol, self.timeFrame, seconds_from)  # Подписываемся на бары, получаем guid подписки
+            self.guid = self.provider.bars_get_and_subscribe(self.exchange, self.symbol, self.timeFrame, seconds_from)  # Подписываемся на бары, получаем guid подписки
             self.put_notification(self.CONNECTED)  # Отправляем уведомление о подключении и начале получения исторических баров
 
     def _load(self):
         """Загружаем бар из истории или новый бар в BackTrader"""
-        if not self.p.live_bars:  # Если получаем только историю (self.historyBars)
+        if not self.p.live_bars:  # Если получаем только историю (self.history_bars)
             if len(self.history_bars) == 0:  # Если исторических данных нет / Все исторические данные получены
                 self.put_notification(self.DISCONNECTED)  # Отправляем уведомление об окончании получения исторических баров
                 return False  # Больше сюда заходить не будем
             bar = self.history_bars[0]  # Берем первый бар из выборки, с ним будем работать
             self.history_bars.remove(bar)  # Убираем его из хранилища новых баров
-        else:  # Если получаем историю и новые бары (self.store.newBars)
+        else:  # Если получаем историю и новые бары (self.store.new_bars)
             if len(self.store.new_bars) == 0:  # Если в хранилище никаких новых баров нет
                 return None  # то нового бара нет, будем заходить еще
             new_bars = [b for b in self.store.new_bars  # Смотрим в хранилище новых баров
@@ -111,10 +111,10 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
                 self.live_mode = False  # Переходим в режим получения истории
         # Все проверки пройдены. Записываем полученный исторический/новый бар
         self.lines.datetime[0] = date2num(self.get_bar_open_date_time(bar))  # DateTime
-        self.lines.open[0] = self.store.alor_to_bt_price(self.exchange, self.symbol, bar['open'])  # Open
-        self.lines.high[0] = self.store.alor_to_bt_price(self.exchange, self.symbol, bar['high'])  # High
-        self.lines.low[0] = self.store.alor_to_bt_price(self.exchange, self.symbol, bar['low'])  # Low
-        self.lines.close[0] = self.store.alor_to_bt_price(self.exchange, self.symbol, bar['close'])  # Close
+        self.lines.open[0] = self.provider.alor_price_to_price(self.exchange, self.symbol, bar['open'])  # Open
+        self.lines.high[0] = self.provider.alor_price_to_price(self.exchange, self.symbol, bar['high'])  # High
+        self.lines.low[0] = self.provider.alor_price_to_price(self.exchange, self.symbol, bar['low'])  # Low
+        self.lines.close[0] = self.provider.alor_price_to_price(self.exchange, self.symbol, bar['close'])  # Close
         self.lines.volume[0] = bar['volume']  # Volume
         self.lines.openinterest[0] = 0  # Открытый интерес в Алор не учитывается
         return True  # Будем заходить сюда еще
@@ -122,7 +122,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
     def stop(self):
         super(ALData, self).stop()
         if self.guid is not None:  # Если была подписка на бары
-            self.provider.Unsubscribe(self.guid)  # Отменяем подписку на новые бары
+            self.provider.unsubscribe(self.guid)  # Отменяем подписку на новые бары
             self.put_notification(self.DISCONNECTED)  # Отправляем уведомление об окончании получения новых баров
         self.store.DataCls = None  # Удаляем класс данных в хранилище
 
@@ -136,8 +136,8 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         dt_close = self.get_bar_close_date_time(dt_open)  # Дата/время закрытия бара
         if self.p.sessionend != time(23, 59, 59, 999990) and dt_close.time() > self.p.sessionend:  # Если задано время окончания сессии и закрытие бара после этого времени
             return False  # то бар не соответствует условиям выборки
-        high = self.store.alor_to_bt_price(self.exchange, self.symbol, bar['high'])  # High
-        low = self.store.alor_to_bt_price(self.exchange, self.symbol, bar['low'])  # Low
+        high = self.provider.alor_price_to_price(self.exchange, self.symbol, bar['high'])  # High
+        low = self.provider.alor_price_to_price(self.exchange, self.symbol, bar['low'])  # Low
         if not self.p.four_price_doji and high == low:  # Если не пропускаем дожи 4-х цен, но такой бар пришел
             return False  # то бар не соответствует условиям выборки
         time_market_now = self.get_alor_date_time_now()  # Текущее биржевое время
@@ -147,7 +147,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
 
     def get_bar_open_date_time(self, bar):
         """Дата/время открытия бара. Переводим из GMT в MSK для интрадея. Оставляем в GMT для дневок и выше."""
-        return self.provider.UTCTimeStampToMskDatetime(bar['time'])\
+        return self.provider.utc_time_stamp_to_msk_datetime(bar['time'])\
             if self.p.timeframe in (TimeFrame.Minutes, TimeFrame.Seconds)\
             else datetime.utcfromtimestamp(bar['time'])  # Время открытия бара
 
@@ -176,6 +176,6 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         - Если получили последний бар истории, то запрашием текущие дату и время с сервера Алор
         - Если находимся в режиме получения истории, то переводим текущие дату и время с компьютера в МСК
         """
-        return self.provider.UTCTimeStampToMskDatetime(self.provider.GetTime())\
+        return self.provider.utc_time_stamp_to_msk_datetime(self.provider.get_time())\
             if self.last_bar_received\
-            else datetime.now(self.provider.tzMsk).replace(tzinfo=None)
+            else datetime.now(self.provider.tz_msk).replace(tzinfo=None)
