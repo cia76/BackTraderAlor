@@ -8,7 +8,7 @@ import Strategy  # Торговые системы
 if __name__ == '__main__':  # Точка входа при запуске этого скрипта
     symbol = 'MOEX.SBER'  # Тикер истории Alor
     d1 = feeds.GenericCSVData(  # Получаем историю из файла
-        dataname=f'..\\..\\DataAlor\\{symbol}_D.txt',  # Файл для импорта из Alor. Создается из примера AlorPy 04 - Bars.py
+        dataname=f'..\\..\\DataAlor\\{symbol}_D.txt',  # Файл для импорта из Alor. Создается из примера AlorPy Bars.py
         separator='\t',  # Колонки разделены табуляцией
         dtformat='%d.%m.%Y %H:%M',  # Формат даты/времени DD.MM.YYYY HH:MI
         openinterest=-1,  # Открытого интереса в файле нет

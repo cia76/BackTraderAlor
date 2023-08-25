@@ -60,9 +60,9 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
     def start(self):
         super(ALData, self).start()
         self.put_notification(self.DELAYED)  # Отправляем уведомление об отправке исторических (не новых) баров
-        seconds_from = self.provider.msk_datetime_to_utc_time_stamp(self.p.fromdate) if self.p.fromdate else 0  # Дата и время начала выборки
+        seconds_from = self.provider.msk_datetime_to_utc_timestamp(self.p.fromdate) if self.p.fromdate else 0  # Дата и время начала выборки
         if not self.p.live_bars:  # Если получаем только историю
-            seconds_to = self.provider.msk_datetime_to_utc_time_stamp(self.p.todate) if self.p.todate else 32536799999  # Дата и время окончания выборки
+            seconds_to = self.provider.msk_datetime_to_utc_timestamp(self.p.todate) if self.p.todate else 32536799999  # Дата и время окончания выборки
             history_bars = self.provider.get_history(self.exchange, self.symbol, self.timeFrame, seconds_from, seconds_to)['history']  # Получаем бары из Алор
             for bar in history_bars:  # Пробегаемся по всем полученным барам
                 if self.is_bar_valid(bar):  # Если исторический бар соответствует всем условиям выборки
@@ -147,7 +147,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
 
     def get_bar_open_date_time(self, bar):
         """Дата/время открытия бара. Переводим из GMT в MSK для интрадея. Оставляем в GMT для дневок и выше."""
-        return self.provider.utc_time_stamp_to_msk_datetime(bar['time'])\
+        return self.provider.utc_timestamp_to_msk_datetime(bar['time'])\
             if self.p.timeframe in (TimeFrame.Minutes, TimeFrame.Seconds)\
             else datetime.utcfromtimestamp(bar['time'])  # Время открытия бара
 
@@ -158,12 +158,9 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         elif self.p.timeframe == TimeFrame.Weeks:  # Недельный временной интервал
             return dt_open + timedelta(weeks=period)  # Время закрытия бара
         elif self.p.timeframe == TimeFrame.Months:  # Месячный временной интервал
-            year = dt_open.year  # Год
-            next_month = dt_open.month + period  # Добавляем месяцы
-            if next_month > 12:  # Если произошло переполнение месяцев
-                next_month -= 12  # то вычитаем год из месяцев
-                year += 1  # ставим следующий год
-            return datetime(year, next_month, 1)  # Время закрытия бара
+            year = dt_open.year + (dt_open.month + period - 1) // 12  # Год
+            month = (dt_open.month + period - 1) % 12 + 1  # Месяц
+            return datetime(year, month, 1)  # Время закрытия бара
         elif self.p.timeframe == TimeFrame.Years:  # Годовой временной интервал
             return dt_open.replace(year=dt_open.year + period)  # Время закрытия бара
         elif self.p.timeframe == TimeFrame.Minutes:  # Минутный временной интервал
@@ -176,6 +173,6 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         - Если получили последний бар истории, то запрашием текущие дату и время с сервера Алор
         - Если находимся в режиме получения истории, то переводим текущие дату и время с компьютера в МСК
         """
-        return self.provider.utc_time_stamp_to_msk_datetime(self.provider.get_time())\
+        return self.provider.utc_timestamp_to_msk_datetime(self.provider.get_time())\
             if self.last_bar_received\
             else datetime.now(self.provider.tz_msk).replace(tzinfo=None)

@@ -98,7 +98,7 @@ class ALStore(with_metaclass(MetaSingleton, object)):
 
 
 class Session:
-    """Сессия: Торговая, клиринг, перерыв"""
+    """Торговая сессия"""
 
     def __init__(self, time_begin: time, time_end: time):
         self.time_begin = time_begin  # Время начала сессии
