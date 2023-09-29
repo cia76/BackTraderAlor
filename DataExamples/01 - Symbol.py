@@ -1,15 +1,16 @@
 from datetime import datetime, date, timedelta, time
 from backtrader import Cerebro, TimeFrame
-from BackTraderAlor.ALStore import ALStore, MOEXStocks, MOEXFutures  # Хранилище Alor. Расписания торгов фондового/срочного рынков
+from BackTraderAlor.ALStore import ALStore  # Хранилище Alor
 from AlorPy.Config import Config  # Файл конфигурации
+from MarketPy.Schedule import MOEXStocks, MOEXFutures  # Расписания торгов фондового/срочного рынков
 import Strategy  # Торговые системы
 
 # Исторические/новые бары тикера
 if __name__ == '__main__':  # Точка входа при запуске этого скрипта
     symbol = 'MOEX.SBER'  # Тикер в формате <Код биржи MOEX/SPBX>.<Код тикера>
     schedule = MOEXStocks()  # Расписание торгов фондового рынка
-    # symbol = 'MOEX.Si-6.23'  # Для фьючерсов: <Код тикера>-<Месяц экспирации: 3, 6, 9, 12>.<Две последнии цифры года>
-    # symbol = 'MOEX.SiM3'  # или <Код тикера><Месяц экспирации: 3-H, 6-M, 9-U, 12-Z><Последняя цифра года>
+    # symbol = 'MOEX.Si-12.23'  # Для фьючерсов: <Код тикера>-<Месяц экспирации: 3, 6, 9, 12>.<Две последнии цифры года>
+    # symbol = 'MOEX.SiZ3'  # или <Код тикера><Месяц экспирации: 3-H, 6-M, 9-U, 12-Z><Последняя цифра года>
     # schedule = MOEXFutures()  # Расписание торгов срочного рынка
     store = ALStore(providers=[dict(provider_name='alor_trade', username=Config.UserName, demo=False, refresh_token=Config.RefreshToken)])  # Хранилище Alor
     cerebro = Cerebro(stdstats=False)  # Инициируем "движок" BackTrader. Стандартная статистика сделок и кривой доходности не нужна
@@ -31,7 +32,10 @@ if __name__ == '__main__':  # Точка входа при запуске это
     # 5. Исторические 5-и минутные бары первого часа сессиЙ за неделю без первой 5-и минутки
     # data = store.getdata(dataname=symbol, timeframe=TimeFrame.Minutes, compression=5, fromdate=week_ago, todate=today, sessionstart=time(10, 5), sessionend=time(11, 0))
 
-    # 6. Исторические и новые минутные бары с начала сегодняшней сессии
+    # 6. Исторические и новые минутные бары с начала сегодняшней сессии (подписка)
+    # data = store.getdata(dataname=symbol, timeframe=TimeFrame.Minutes, compression=1, fromdate=today, live_bars=True)
+
+    # 7. Исторические и новые минутные бары с начала сегодняшней сессии (расписание)
     data = store.getdata(dataname=symbol, timeframe=TimeFrame.Minutes, compression=1, fromdate=today, schedule=schedule, live_bars=True)
 
     cerebro.adddata(data)  # Добавляем данные
