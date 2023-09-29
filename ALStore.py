@@ -1,11 +1,9 @@
-from typing import Union  # Объединение типов
 import collections
-from datetime import datetime, timedelta, time
-
-from pytz import timezone  # Работаем с временнОй зоной
+from datetime import timedelta
 
 from backtrader.metabase import MetaParams
 from backtrader.utils.py3 import with_metaclass
+from backtrader import TimeFrame
 
 from AlorPy import AlorPy
 
@@ -96,75 +94,46 @@ class ALStore(with_metaclass(MetaSingleton, object)):
             provider.OnNewBar = provider.default_handler  # Возвращаем обработчик по умолчанию
             provider.close_web_socket()  # Перед выходом закрываем соединение с WebSocket
 
+    # Функции конвертации
 
-class Session:
-    """Торговая сессия"""
+    @staticmethod
+    def timeframe_to_alor_timeframe(timeframe, compression) -> str:
+        """Перевод временнОго интервала во временной интервал Алор
 
-    def __init__(self, time_begin: time, time_end: time):
-        self.time_begin = time_begin  # Время начала сессии
-        self.time_end = time_end  # Время окончания сессии
-
-
-class Schedule:
-    """Расписание торгов"""
-    market_timezone = timezone('Europe/Moscow')  # ВременнАя зона работы биржи
-
-    def __init__(self, trade_sessions: list[Session]):
-        self.trade_sessions = sorted(trade_sessions, key=lambda session: session.time_begin)  # Список торговых сессий сортируем по возрастанию времени начала сессии
-
-    def get_trade_session(self, dt_market: datetime) -> Union[Session, None]:
-        """Торговая сессия по дате и времени на бирже
-
-        :param datetime dt_market: Дата и время на бирже
-        :return: Дата и время на бирже. None, если торги не идут
+        :param TimeFrame timeframe: Временной интервал
+        :param int compression: Размер временнОго интервала
+        :return: Временной интервал Алор
         """
-        if dt_market.weekday() in (5, 6):  # Если задан выходной день
-            return None  # То торги не идут, торговой сессии нет
-        t_market = dt_market.time()  # Время на бирже
-        for session in self.trade_sessions:  # Пробегаемся по всем торговым сессиям
-            if session.time_begin <= t_market <= session.time_end:  # Если время внутри сессии
-                return session  # Возвращаем найденную торговую сессию
-        return None  # Если время попадает в клиринг/перерыв, то торговой сессии нет
+        if timeframe == TimeFrame.Days:  # Дневной временной интервал (по умолчанию)
+            return 'D'
+        elif timeframe == TimeFrame.Weeks:  # Недельный временной интервал
+            return 'W'
+        elif timeframe == TimeFrame.Months:  # Месячный временной интервал
+            return 'M'
+        elif timeframe == TimeFrame.Years:  # Годовой временной интервал
+            return 'Y'
+        elif timeframe == TimeFrame.Minutes:  # Минутный временной интервал
+            return str(compression * 60)  # Переводим в секунды
+        elif timeframe == TimeFrame.Seconds:  # Секундный временной интервал
+            return str(compression)
 
-    def time_until_trade(self, dt_market: datetime) -> timedelta:
-        """Время, через которое можжно будет торговать
+    @staticmethod
+    def timeframe_to_timedelta(timeframe, compression) -> timedelta:
+        """Перевод временнОго интервала в разницу во времени
 
-        :param datetime dt_market: Дата и время на бирже
-        :return: Время, через которое можжно будет торговать. 0 секунд, если торговать можно прямо сейчас
+        :param TimeFrame timeframe: Временной интервал
+        :param int compression: Размер временнОго интервала
+        :return: Разница во времени
         """
-        session = self.get_trade_session(dt_market)  # Пробуем получить торговую сессию
-        if session:  # Если нашли торговую сессию
-            return timedelta()  # То ждать не нужно, торговать можно прямо сейчас
-        for s in self.trade_sessions:  # Пробегаемся по всем торговым сессиям
-            if s.time_begin > dt_market.time():  # Если сессия начинается позже текущего времени на бирже
-                session = s  # То это искомая сессия
-                break  # Сессию нашли, дальше поиск вести не нужно
-        d_market = dt_market.date()  # Дата на бирже
-        if not session:  # Сессия не найдена, если время позже окончания последней сессии
-            session = self.trade_sessions[0]  # Будет первая торговая сессия
-            d_market += timedelta(1)  # Следующего дня
-        w_market = d_market.weekday()  # День недели даты на бирже
-        if w_market in (5, 6):  # Если биржа на выходных не работает, и задан выходной день
-            d_market += timedelta(7 - w_market)  # То будем ждать первой торговой сессии понедельника
-        dt_next_session = datetime(d_market.year, d_market.month, d_market.day, session.time_begin.hour, session.time_begin.minute, session.time_begin.second)
-        return dt_next_session - dt_market
-
-
-class MOEXStocks(Schedule):
-    """Московская биржа: Фондовый рынок"""
-
-    def __init__(self):
-        super(MOEXStocks, self).__init__(
-            [Session(time(10, 0, 0), time(18, 39, 59)),  # Основная торговая сессия
-             Session(time(19, 5, 0), time(23, 49, 59))])  # Вечерняя торговая сессия
-
-
-class MOEXFutures(Schedule):
-    """Московская биржа: Срочный рынок"""
-
-    def __init__(self):
-        super(MOEXFutures, self).__init__(
-            [Session(time(9, 0, 0), time(9, 59, 59)),  # Утренняя дополнительная торговая сессия
-             Session(time(10, 0, 0), time(13, 59, 59)),  # Основная торговая сессия (Дневной расчетный период)
-             Session(time(14, 5, 0), time(18, 49, 59)),  # Основная торговая сессия (Вечерний расчетный период)
-             Session(time(19, 5, 0), time(23, 49, 59))])  # Вечерняя дополнительная торговая сессия
+        if timeframe == TimeFrame.Days:  # Дневной временной интервал (по умолчанию)
+            return timedelta(days=1)
+        elif timeframe == TimeFrame.Weeks:  # Недельный временной интервал
+            return timedelta(weeks=1)
+        elif timeframe == TimeFrame.Months:  # Месячный временной интервал
+            raise NotImplementedError  # TODO В месяце разное кол-во дней
+        elif timeframe == TimeFrame.Years:  # Годовой временной интервал
+            raise NotImplementedError  # TODO В году разное кол-во дней
+        elif timeframe == TimeFrame.Minutes:  # Минутный временной интервал
+            return timedelta(minutes=compression)
+        elif timeframe == TimeFrame.Seconds:  # Секундный временной интервал
+            return timedelta(seconds=compression)
