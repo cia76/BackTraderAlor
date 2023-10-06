@@ -6,7 +6,7 @@ from AlorPy.Config import Config  # Файл конфигурации
 
 class LiveTradingEvents(bt.Strategy):
     """
-    Получение и отображение событий в QUIK:
+    Получение и отображение событий в Alor:
     - Изменение статуса приходящих баров (DELAYED / CONNECTED / DISCONNECTED / LIVE)
     - Получение нового бара
     - Изменение статуса заявок
@@ -57,8 +57,8 @@ class LiveTradingEvents(bt.Strategy):
 
 if __name__ == '__main__':  # Точка входа при запуске этого скрипта
     symbol = 'MOEX.SBER'  # Тикер
-    # symbol = 'MOEX.SI-6.23'  # Для фьючерсов: <Код тикера заглавными буквами>-<Месяц экспирации: 3, 6, 9, 12>.<Последние 2 цифры года>
-    # symbol = 'MOEX.RTS-6.23'
+    # symbol = 'MOEX.SI-12.23'  # Для фьючерсов: <Код тикера заглавными буквами>-<Месяц экспирации: 3, 6, 9, 12>.<Последние 2 цифры года>
+    # symbol = 'MOEX.RTS-12.23'
     cerebro = bt.Cerebro(stdstats=False, quicknotify=True)  # Инициируем "движок" BackTrader. Стандартная статистика сделок и кривой доходности не нужна
     today = date.today()  # Сегодняшняя дата без времени
     week_ago = today - timedelta(days=7)  # Дата неделю назад без времени

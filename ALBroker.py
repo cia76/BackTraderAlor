@@ -423,7 +423,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         price = abs(data['price'] / size)  # Цена исполнения за штуку
         str_utc = data['date'][0:19]  # Возвращается зн-ие типа: '2023-02-16T09:25:01.4335364Z'. Берем первые 20 символов
         dt_utc = datetime.strptime(str_utc, '%Y-%m-%dT%H:%M:%S')  # Переводим в дату/время UTC
-        dt = self.provider.utc_to_msk_datetime(dt_utc)  # Дата/время сделки по времени биржи (МСК)
+        dt = self.provider.utc_to_msk_datetime(dt_utc)  # Дата и время сделки по времени биржи (МСК)
         pos = self.getposition(order.data)  # Получаем позицию по тикеру или нулевую позицию если тикера в списке позиций нет
         psize, pprice, opened, closed = pos.update(size, price)  # Обновляем размер/цену позиции на размер/цену сделки
         order.execute(dt, size, price, closed, 0, 0, opened, 0, 0, 0, 0, psize, pprice)  # Исполняем заявку в BackTrader

@@ -39,7 +39,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         self.history_bars = []  # Исторические бары после применения фильтров
         self.guid = None  # Идентификатор подписки/расписания на историю цен
         self.exit_event = Event()  # Определяем событие выхода из потока
-        self.dt_last_open = datetime.min  # Дата/время открытия последнего полученного бара
+        self.dt_last_open = datetime.min  # Дата и время открытия последнего полученного бара
         self.last_bar_received = False  # Получен последний бар
         self.live_mode = False  # Режим получения баров. False = История, True = Новые бары
 
@@ -89,7 +89,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
             bar = new_bar['response']['data']  # С данными этого бара будем работать
             if not self.is_bar_valid(bar):  # Если бар не соответствует всем условиям выборки
                 return None  # то пропускаем бар, будем заходить еще
-            dt_open = self.get_bar_open_date_time(bar)  # Дата/время открытия бара
+            dt_open = self.get_bar_open_date_time(bar)  # Дата и время открытия бара
             if dt_open <= self.dt_last_open:  # Если пришел бар из прошлого (дата открытия меньше последней даты открытия)
                 return None  # то пропускаем бар, будем заходить еще
             self.dt_last_open = dt_open  # Запоминаем дату/время открытия пришедшего бара для будущих сравнений
@@ -119,14 +119,37 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
             self.put_notification(self.DISCONNECTED)  # Отправляем уведомление об окончании получения новых баров
         self.store.DataCls = None  # Удаляем класс данных в хранилище
 
+    # Расписание
+
+    def stream_bars(self) -> None:
+        """Поток получения новых бар по расписанию биржи"""
+        time_frame = self.store.timeframe_to_timedelta(self.p.timeframe, self.p.compression)  # Разница во времени между барами
+        while True:
+            market_datetime_now = self.p.schedule.utc_to_msk_datetime(datetime.utcnow())  # Текущее время на бирже
+            trade_bar_open_datetime = self.p.schedule.get_trade_bar_open_datetime(market_datetime_now, time_frame)  # Дата и время бара, который будем получать
+            trade_bar_request_datetime = self.p.schedule.get_trade_bar_request_datetime(trade_bar_open_datetime, time_frame)  # Дата и время запроса бара на бирже
+            sleep_time_secs = (trade_bar_request_datetime - market_datetime_now + self.p.schedule.delta).total_seconds()  # Время ожидания в секундах
+            exit_event_set = self.exit_event.wait(sleep_time_secs)  # Ждем нового бара или события выхода из потока
+            if exit_event_set:  # Если произошло событие выхода из потока
+                return  # Выходим из потока, дальше не продолжаем
+            seconds_from = self.p.schedule.msk_datetime_to_utc_timestamp(trade_bar_open_datetime)  # Дата и время бара в timestamp UTC
+            bars = self.provider.get_history(self.exchange, self.symbol, self.timeframe, seconds_from)  # Получаем ответ на запрос истории рынка
+            if not bars:  # Если ничего не получили
+                continue  # Будем получать следующий бар
+            bars = bars['history']  # Последний сформированный и текущий несформированный (если имеется) бары
+            if len(bars) == 0:  # Если бары не получены
+                continue  # Будем получать следующий бар
+            bar = bars[0]  # Получаем первый (завершенный) бар
+            self.store.new_bars.append(dict(provider_name=self.provider_name, response=dict(guid=self.guid, data=bar)))  # Обработчик новых баров по подписке из Алор
+
     # Функции
 
-    def is_bar_valid(self, bar):
+    def is_bar_valid(self, bar) -> bool:
         """Проверка бара на соответствие условиям выборки"""
-        dt_open = self.get_bar_open_date_time(bar)  # Дата/время открытия бара
+        dt_open = self.get_bar_open_date_time(bar)  # Дата и время открытия бара
         if self.p.sessionstart != time.min and dt_open.time() < self.p.sessionstart:  # Если задано время начала сессии и открытие бара до этого времени
             return False  # то бар не соответствует условиям выборки
-        dt_close = self.get_bar_close_date_time(dt_open)  # Дата/время закрытия бара
+        dt_close = self.get_bar_close_date_time(dt_open)  # Дата и время закрытия бара
         if self.p.sessionend != time(23, 59, 59, 999990) and dt_close.time() > self.p.sessionend:  # Если задано время окончания сессии и закрытие бара после этого времени
             return False  # то бар не соответствует условиям выборки
         high = self.provider.alor_price_to_price(self.exchange, self.symbol, bar['high'])  # High
@@ -138,14 +161,14 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
             return False  # то бар не соответствует условиям выборки
         return True  # В остальных случаях бар соответствуем условиям выборки
 
-    def get_bar_open_date_time(self, bar):
-        """Дата/время открытия бара. Переводим из GMT в MSK для интрадея. Оставляем в GMT для дневок и выше."""
+    def get_bar_open_date_time(self, bar) -> datetime:
+        """Дата и время открытия бара. Переводим из GMT в MSK для интрадея. Оставляем в GMT для дневок и выше."""
         return self.provider.utc_timestamp_to_msk_datetime(bar['time'])\
             if self.p.timeframe in (TimeFrame.Minutes, TimeFrame.Seconds)\
             else datetime.utcfromtimestamp(bar['time'])  # Время открытия бара
 
-    def get_bar_close_date_time(self, dt_open, period=1):
-        """Дата/время закрытия бара"""
+    def get_bar_close_date_time(self, dt_open, period=1) -> datetime:
+        """Дата и время закрытия бара"""
         if self.p.timeframe == TimeFrame.Days:  # Дневной временной интервал (по умолчанию)
             return dt_open + timedelta(days=period)  # Время закрытия бара
         elif self.p.timeframe == TimeFrame.Weeks:  # Недельный временной интервал
@@ -169,26 +192,3 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         return self.provider.utc_timestamp_to_msk_datetime(self.provider.get_time())\
             if self.last_bar_received\
             else datetime.now(self.provider.tz_msk).replace(tzinfo=None)
-
-    # Расписание
-
-    def stream_bars(self) -> None:
-        """Поток получения новых бар по расписанию биржи"""
-        time_frame = self.store.timeframe_to_timedelta(self.p.timeframe, self.p.compression)  # Разница во времени между барами
-        while True:
-            market_datetime_now = self.p.schedule.utc_to_msk_datetime(datetime.utcnow())  # Текущее время на бирже
-            trade_bar_open_datetime = self.p.schedule.get_trade_bar_open_datetime(market_datetime_now, time_frame)  # Дата и время бара, который будем получать
-            trade_bar_request_datetime = self.p.schedule.get_trade_bar_request_datetime(trade_bar_open_datetime, time_frame)  # Дата и время запроса бара на бирже
-            sleep_time_secs = (trade_bar_request_datetime - market_datetime_now + self.p.schedule.delta).total_seconds()  # Время ожидания в секундах
-            exit_event_set = self.exit_event.wait(sleep_time_secs)  # Ждем нового бара или события выхода из потока
-            if exit_event_set:  # Если произошло событие выхода из потока
-                return  # Выходим из потока, дальше не продолжаем
-            seconds_from = self.p.schedule.msk_datetime_to_utc_timestamp(trade_bar_open_datetime)  # Дата и время бара в timestamp UTC
-            bars = self.provider.get_history(self.exchange, self.symbol, self.timeframe, seconds_from)  # Получаем ответ на запрос истории рынка
-            if not bars:  # Если ничего не получили
-                continue  # Будем получать следующий бар
-            bars = bars['history']  # Последний сформированный и текущий несформированный (если имеется) бары
-            if len(bars) == 0:  # Если бары не получены
-                continue  # Будем получать следующий бар
-            bar = bars[0]  # Получаем первый (завершенный) бар
-            self.store.new_bars.append(dict(provider_name=self.provider_name, response=dict(guid=self.guid, data=bar)))  # Обработчик новых баров по подписке из Алор
