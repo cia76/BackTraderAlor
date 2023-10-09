@@ -343,8 +343,8 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
             return order  # Возвращаем отклоненную заявку
         order.accept(self)  # Заявка принята на бирже
-        self.orders[order.ref] = order  # Сохраняем в списке заявок, отправленных на биржу
         order.addinfo(order_number=response['orderNumber'])  # Сохраняем пришедший номер заявки на бирже
+        self.orders[order.ref] = order  # Сохраняем заявку в списке заявок, отправленных на биржу
         return order  # Возвращаем заявку
 
     def cancel_order(self, order):
