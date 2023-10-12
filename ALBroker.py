@@ -51,6 +51,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         self.provider.OnPosition = self.on_position  # Обработка позиций
         self.provider.OnTrade = self.on_trade  # Обработка сделок
         self.provider.OnOrder = self.on_order  # Обработка заявок
+        self.provider.OnStopOrderV2 = self.on_stop_order  # Обработка стоп-заявок
         if self.p.use_positions:  # Если нужно при запуске брокера получить текущие позиции на бирже
             self.get_all_active_positions()  # то получаем их
         self.startingcash = self.cash = self.getcash()  # Стартовые и текущие свободные средства по счету. Подписка на позиции для портфеля/биржи
@@ -398,15 +399,33 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         self.cash_value[(portfolio, exchange)] = (c, v)  # Свободные средства/Стоимость позиций
 
     def on_order(self, response):
-        """Обработка заявок на отмену (canceled). Статусы working, filled, rejected обрабатываются в place_order и on_trade"""
+        """Обработка рыночных и лимитных заявок на отмену (canceled). Статусы working, filled, rejected обрабатываются в place_order и on_trade"""
         data = response['data']  # Данные заявки
-        if data['status'] != 'canceled':  # Нас интересует только отмена заявки
+        status = data['status']  # Статус заявки: working - на исполнении, filled - исполнена, canceled - отменена, rejected - отклонена
+        if status != 'canceled':  # Для рыночной или лимитной заявки интересует только отмена заявки. Исполнение заявки
             return  # иначе, выходим, дальше не продолжаем
         order_number = data['id']  # Номер заявки из сделки
         order: Order = self.get_order(order_number)  # Заявка BackTrader
         if not order:  # Если заявки нет в BackTrader (не из автоторговли)
             return  # то выходим, дальше не продолжаем
         order.cancel()  # Отменяем существующую заявку
+        self.notifs.append(order.clone())  # Уведомляем брокера об отмене заявки
+        self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки (Canceled)
+
+    def on_stop_order(self, response):
+        """Обработка стоп-заявок на отмену (canceled) и исполнение (filled). Статусы working и rejected обрабатываются в place_order и on_trade"""
+        data = response['data']  # Данные заявки
+        status = data['status']  # Статус заявки: working - на исполнении, filled - исполнена, canceled - отменена, rejected - отклонена
+        if status not in ('filled', 'canceled'):  # Для стоп-заявки интересует отмена и исполнение, которое не приводит к сделке
+            return  # иначе, выходим, дальше не продолжаем
+        order_number = data['id']  # Номер заявки из сделки
+        order: Order = self.get_order(order_number)  # Заявка BackTrader
+        if not order:  # Если заявки нет в BackTrader (не из автоторговли)
+            return  # то выходим, дальше не продолжаем
+        if status == 'filled':  # Для исполненной стоп-заявки
+            order.completed()  # Заявка полностью исполнена
+        else:  # Для отмененной рыночной, лимитной, стоп-заявки
+            order.cancel()  # Отменяем существующую заявку
         self.notifs.append(order.clone())  # Уведомляем брокера об отмене заявки
         self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки (Canceled)
 
@@ -421,7 +440,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         if data['side'] == 'sell':  # Если сделка на продажу
             size *= -1  # то кол-во ставим отрицательным
         price = abs(data['price'] / size)  # Цена исполнения за штуку
-        str_utc = data['date'][0:19]  # Возвращается зн-ие типа: '2023-02-16T09:25:01.4335364Z'. Берем первые 20 символов
+        str_utc = data['date'][:19]  # Возвращается значение типа: '2023-02-16T09:25:01.4335364Z'. Берем первые 20 символов до точки перед наносекундами
         dt_utc = datetime.strptime(str_utc, '%Y-%m-%dT%H:%M:%S')  # Переводим в дату/время UTC
         dt = self.provider.utc_to_msk_datetime(dt_utc)  # Дата и время сделки по времени биржи (МСК)
         pos = self.getposition(order.data)  # Получаем позицию по тикеру или нулевую позицию если тикера в списке позиций нет
@@ -431,7 +450,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             if order.status != order.Partial:  # Если заявка переходит в статус частичного исполнения (может исполняться несколькими частями)
                 order.partial()  # то заявка частично исполнена
                 self.notifs.append(order.clone())  # Уведомляем брокера о частичном исполнении заявки
-        else:  # Если зничего нет к исполнению
+        else:  # Если ничего нет к исполнению
             order.completed()  # то заявка полностью исполнена
             self.notifs.append(order.clone())  # Уведомляем брокера о полном исполнении заявки
             # Снимаем oco-заявку только после полного исполнения заявки

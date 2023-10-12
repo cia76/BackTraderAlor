@@ -65,7 +65,10 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
                 self.guid = uuid4().hex  # guid расписания
                 Thread(target=self.stream_bars).start()  # Создаем и запускаем получение новых бар по расписанию в потоке
             else:  # Если получаем новые бары по подписке
-                self.guid = self.provider.bars_get_and_subscribe(self.exchange, self.symbol, self.timeframe, seconds_from)  # Подписываемся на бары, получаем guid подписки
+                # Ответ ALOR OpenAPI Support: Чтобы получать последний бар сессии на первом тике следующей сессии, нужно использовать скрытый параметр frequency в ms с очень большим значением (1_000_000_000)
+                # С 09:00 до 10:00 Алор перезапускает сервер, и подписка на последний бар предыдущей сессии по фьючерсам пропадает.
+                # В этом случае нужно брать данные не из подписки, а из расписания
+                self.guid = self.provider.bars_get_and_subscribe(self.exchange, self.symbol, self.timeframe, seconds_from, 1_000_000_000)  # Подписываемся на бары, получаем guid подписки
             self.put_notification(self.CONNECTED)  # Отправляем уведомление о подключении и начале получения исторических баров
 
     def _load(self):
