@@ -51,7 +51,8 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         self.provider.OnPosition = self.on_position  # Обработка позиций
         self.provider.OnTrade = self.on_trade  # Обработка сделок
         self.provider.OnOrder = self.on_order  # Обработка заявок
-        self.provider.OnStopOrderV2 = self.on_stop_order  # Обработка стоп-заявок
+        self.provider.OnStopOrder = self.on_stop_order  # Обработка стоп-заявок
+        # self.provider.OnStopOrderV2 = self.on_stop_order  # Обработка стоп-заявок
         if self.p.use_positions:  # Если нужно при запуске брокера получить текущие позиции на бирже
             self.get_all_active_positions()  # то получаем их
         self.startingcash = self.cash = self.getcash()  # Стартовые и текущие свободные средства по счету. Подписка на позиции для портфеля/биржи
@@ -147,7 +148,8 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         self.provider.OnPosition = self.provider.default_handler  # Обработка позиций
         self.provider.OnTrade = self.provider.default_handler  # Обработка сделок
         self.provider.OnOrder = self.provider.default_handler  # Обработка заявок
-        self.provider.OnStopOrderV2 = self.provider.default_handler  # Обработка стоп-заявок
+        # self.provider.OnStopOrderV2 = self.provider.default_handler  # Обработка стоп-заявок
+        self.provider.OnStopOrder = self.provider.default_handler  # Обработка стоп-заявок
         self.store.BrokerCls = None  # Удаляем класс брокера из хранилища
 
     # Функции
@@ -213,7 +215,8 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                     ('PositionsGetAndSubscribeV2',  # Если это подписка на позиции (получение свободных средств и стоимости позиций)
                      'TradesGetAndSubscribeV2',  # или подписка на сделки (изменение статусов заявок)
                      'OrdersGetAndSubscribeV2',  # или подписка на заявки (снятие заявок с биржи)
-                     'StopOrdersGetAndSubscribeV2'):  # или подписка на стоп-заявки (исполнение или снятие заявок с биржи)
+                     # 'StopOrdersGetAndSubscribeV2'):  # или подписка на стоп-заявки (исполнение или снятие заявок с биржи)
+                     'StopOrdersGetAndSubscribe'):  # или подписка на стоп-заявки (исполнение или снятие заявок с биржи)
                 self.provider.unsubscribe(guid)  # то отменяем подписку
 
     def get_all_active_positions(self):
@@ -417,6 +420,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
 
     def on_stop_order(self, response):
         """Обработка стоп-заявок на отмену (canceled) и исполнение (filled). Статусы working и rejected обрабатываются в place_order и on_trade"""
+        print(response)  # Для отладки
         data = response['data']  # Данные заявки
         status = data['status']  # Статус заявки: working - на исполнении, filled - исполнена, canceled - отменена, rejected - отклонена
         if status not in ('filled', 'canceled'):  # Для стоп-заявки интересует отмена и исполнение, которое не приводит к сделке
