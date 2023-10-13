@@ -147,6 +147,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         self.provider.OnPosition = self.provider.default_handler  # Обработка позиций
         self.provider.OnTrade = self.provider.default_handler  # Обработка сделок
         self.provider.OnOrder = self.provider.default_handler  # Обработка заявок
+        self.provider.OnStopOrderV2 = self.provider.default_handler  # Обработка стоп-заявок
         self.store.BrokerCls = None  # Удаляем класс брокера из хранилища
 
     # Функции
@@ -202,6 +203,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         self.provider.positions_get_and_subscribe_v2(portfolio, exchange)  # Подписка на позиции (получение свободных средств и стоимости позиций)
         self.provider.trades_get_and_subscribe_v2(portfolio, exchange)  # Подписка на сделки (изменение статусов заявок)
         self.provider.orders_get_and_subscribe_v2(portfolio, exchange)  # Подписка на заявки (снятие заявок с биржи)
+        self.provider.stop_orders_get_and_subscribe_v2(portfolio, exchange)  # Подписка на стоп-заявки (исполнение или снятие заявок с биржи)
 
     def unsubscribe(self):
         """Отмена всех подписок"""
@@ -210,7 +212,8 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             if subscription_request['opcode'] in \
                     ('PositionsGetAndSubscribeV2',  # Если это подписка на позиции (получение свободных средств и стоимости позиций)
                      'TradesGetAndSubscribeV2',  # или подписка на сделки (изменение статусов заявок)
-                     'OrdersGetAndSubscribeV2'):  # или подписка на заявки (снятие заявок с биржи)
+                     'OrdersGetAndSubscribeV2',  # или подписка на заявки (снятие заявок с биржи)
+                     'StopOrdersGetAndSubscribeV2'):  # или подписка на стоп-заявки (исполнение или снятие заявок с биржи)
                 self.provider.unsubscribe(guid)  # то отменяем подписку
 
     def get_all_active_positions(self):
