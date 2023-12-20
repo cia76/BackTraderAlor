@@ -439,6 +439,8 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
     def on_trade(self, response):
         """Обработка сделок"""
         data = response['data']  # Данные сделки
+        if data['existing']:  # При (пере)подключении к серверу передаются сделки как из истории, так и новые. Если сделка из истории
+            return  # то выходим, дальше не продолжаем
         order_no = data['orderno']  # Номер заявки из сделки
         order = self.get_order(order_no)  # Заявка BackTrader
         if not order:  # Если заявки нет в BackTrader (не из автоторговли)
