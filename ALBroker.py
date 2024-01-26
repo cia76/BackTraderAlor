@@ -192,6 +192,8 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         """
         for guid in self.provider.subscriptions.keys():  # Пробегаемся по всем подпискам
             subscription = self.provider.subscriptions[guid]  # Подписка
+            if 'portfolio' not in subscription or 'exchange' not in subscription:  # Если подписка не по портфелю/бирже (например, на бары)
+                continue  # то переходим к следующей подписке
             if subscription['portfolio'] == portfolio and subscription['exchange'] == exchange:  # Если есть в списке подписок
                 return True  # то подписка есть
         return False  # иначе, подписки нет
