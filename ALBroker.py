@@ -450,7 +450,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         size = data['qtyUnits']  # Кол-во в штуках. Всегда положительное
         if data['side'] == 'sell':  # Если сделка на продажу
             size *= -1  # то кол-во ставим отрицательным
-        price = abs(data['price'] / size)  # Цена исполнения за штуку
+        price = abs(data['price'])  # Цена исполнения за штуку
         str_utc = data['date'][:19]  # Возвращается значение типа: '2023-02-16T09:25:01.4335364Z'. Берем первые 20 символов до точки перед наносекундами
         dt_utc = datetime.strptime(str_utc, '%Y-%m-%dT%H:%M:%S')  # Переводим в дату/время UTC
         dt = self.provider.utc_to_msk_datetime(dt_utc)  # Дата и время сделки по времени биржи (МСК)
