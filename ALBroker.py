@@ -1,6 +1,7 @@
 from typing import Union  # Объединение типов
 import collections
 from datetime import datetime
+import logging
 
 from backtrader import BrokerBase, Order, BuyOrder, SellOrder
 from backtrader.position import Position
@@ -11,12 +12,14 @@ from BackTraderAlor import ALStore
 from AlorPy import AlorPy
 
 
+# noinspection PyArgumentList
 class MetaALBroker(BrokerBase.__class__):
     def __init__(self, name, bases, dct):
         super(MetaALBroker, self).__init__(name, bases, dct)  # Инициализируем класс брокера
         ALStore.BrokerCls = self  # Регистрируем класс брокера в хранилище Алор
 
 
+# noinspection PyProtectedMember,PyArgumentList,PyUnusedLocal
 class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
     """Брокер Алор"""
     params = (
@@ -30,13 +33,16 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         super(ALBroker, self).__init__()
         self.store = ALStore(**kwargs)  # Хранилище Алор
         self.provider_name = self.p.provider_name if self.p.provider_name else list(self.store.providers.keys())[0]  # Название провайдера, или первое название по ключу name
+        self.logger = logging.getLogger(f'ALBroker.{self.provider_name}')  # Будем вести лог
         self.provider: AlorPy = self.store.providers[self.provider_name]  # Провайдер
+        self.logger.debug(f'Учетная запись {self.provider.user_name}')
         self.portfolios_accounts = {}  # Справочник кодов портфелей/счетов провайдеров
         for market in self.provider.get_portfolios().values():  # Пробегаемся по всем рынкам: Фондовый рынок / Фьючерсы и опционы / Валютный рынок
             for portfolio in market:  # Пробегаемся по всем портфелям рынка
                 p = portfolio['portfolio']  # Номер портфеля
                 if p in self.p.accounts:  # Если есть привязка портфеля к бирже
                     self.portfolios_accounts[p] = portfolio['tks']  # то добавляем код портфеля/счета в список
+                    self.logger.debug(f'Портфель {p}, Счет {self.portfolios_accounts[p]}')
         self.notifs = collections.deque()  # Очередь уведомлений брокера о заявках
         self.startingcash = self.cash = 0  # Стартовые и текущие свободные средства по счету
         self.startingvalue = self.value = 0  # Стартовая и текущая стоимость позиций
@@ -82,7 +88,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             value = 0  # Будем набирать стоимость позиций
             if datas is not None:  # Если получаем по тикерам
                 for data in datas:  # Пробегаемся по всем тикерам
-                    exchange, symbol = self.provider.dataname_to_exchange_symbol(data._name)  # По тикеру получаем биржу и код тикера
+                    exchange, symbol = self.provider.dataname_to_board_symbol(data._name)  # По тикеру получаем биржу и код тикера
                     si = self.provider.get_symbol_info(exchange, symbol)  # Информация о тикере
                     if not si:  # Если тикер не найден
                         continue  # то переходим к следующему тикеру, дальше не продолжаем
@@ -228,7 +234,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                 positions = self.provider.get_positions(portfolio, exchange, True)  # Получаем все позиции без денежной позиции
                 for position in positions:  # Пробегаемся по всем позициям
                     symbol = position['symbol']  # Тикер
-                    dataname = self.provider.exchange_symbol_to_dataname(exchange, symbol)  # Название тикера
+                    dataname = self.provider.board_symbol_to_dataname(exchange, symbol)  # Название тикера
                     si = self.provider.get_symbol_info(exchange, symbol)  # Информация о тикере
                     size = position['qty'] * si['lotsize']  # Кол-во в штуках. Отрицательное для коротких позиций
                     price = round(position['volume'] / size, 2)  # Цена входа
@@ -255,23 +261,24 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             else SellOrder(owner=owner, data=data, size=size, price=price, pricelimit=plimit, exectype=exectype, valid=valid, oco=oco, parent=parent, transmit=transmit)  # Заявка на покупку/продажу
         order.addcomminfo(self.getcommissioninfo(data))  # По тикеру выставляем комиссии в заявку. Нужно для исполнения заявки в BackTrader
         order.addinfo(**kwargs)  # Передаем в заявку все дополнительные свойства из брокера, в т.ч. portfolio, server
-        exchange, symbol = self.provider.dataname_to_exchange_symbol(data._name)  # По тикеру получаем биржу и тикера
-        order.addinfo(exchange=exchange, symbol=symbol)  # В заявку заносим код биржи exchange и тикер symbol
+        board, symbol = self.provider.dataname_to_board_symbol(data._name)  # По тикеру получаем режим торгов и тикер
+        exchange = self.store.provider.get_exchange(board, symbol)  # Биржа тикера. В Алор запросы выполняются по бирже и тикеру
+        order.addinfo(board=board, symbol=symbol, exchange=exchange)  # В заявку заносим код режима торгов, тикер и биржу
         if order.exectype in (Order.Close, Order.StopTrail, Order.StopTrailLimit, Order.Historical):  # Эти типы заявок не реализованы
-            print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отклонена. Работа с заявками {order.exectype} не реализована')
+            self.logger.warning(f'Постановка заявки {order.ref} по тикеру {board}.{symbol} на бирже {exchange} отклонена. Работа с заявками {order.exectype} не реализована')
             order.reject(self)  # то отклоняем заявку
             self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
             return order  # Возвращаем отклоненную заявку
         si = self.provider.get_symbol_info(exchange, symbol)  # Информация о тикере
         if not si:  # Если тикер не найден
-            print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отклонена. Тикер не найден')
+            self.logger.warning(f'Постановка заявки {order.ref} по тикеру {board}.{symbol} на бирже {exchange} отклонена. Тикер не найден')
             order.reject(self)  # то отклоняем заявку
             self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
             return order  # Возвращаем отклоненную заявку
         if 'portfolio' not in order.info:  # Если при постановке заявки не указали портфель
             portfolio = self.get_portfolio(si['primary_board'])  # Площадка, где торгуется тикер
             if not portfolio:  # Если портфель не найден
-                print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отклонена. Портфель (portfolio) не найден')
+                self.logger.warning(f'Постановка заявки {order.ref} по тикеру {board}.{symbol} на бирже {exchange} отклонена. Портфель (portfolio) не найден')
                 order.reject(self)  # то отклоняем заявку
                 self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
                 return order  # Возвращаем отклоненную заявку
@@ -282,12 +289,12 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             self.subscribe(portfolio, exchange)  # то подписываемся на события портфеля/биржи
         if order.exectype != Order.Market and not order.price:  # Если цена заявки не указана для всех заявок, кроме рыночной
             price_type = 'Лимитная' if order.exectype == Order.Limit else 'Стоп'  # Для стоп заявок это будет триггерная (стоп) цена
-            print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отклонена. {price_type} цена (price) не указана для заявки типа {order.exectype}')
+            self.logger.warning(f'Постановка заявки {order.ref} по тикеру {board}.{symbol} на бирже {exchange} отклонена. {price_type} цена (price) не указана для заявки типа {order.exectype}')
             order.reject(self)  # то отклоняем заявку
             self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
             return order  # Возвращаем отклоненную заявку
         if order.exectype == Order.StopLimit and not order.pricelimit:  # Если лимитная цена не указана для стоп-лимитной заявки
-            print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отклонена. Лимитная цена (pricelimit) не указана для заявки типа {order.exectype}')
+            self.logger.warning(f'Постановка заявки {order.ref} по тикеру {board}.{symbol} на бирже {exchange} отклонена. Лимитная цена (pricelimit) не указана для заявки типа {order.exectype}')
             order.reject(self)  # то отклоняем заявку
             self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
             return order  # Возвращаем отклоненную заявку
@@ -295,7 +302,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             if 'server' not in order.info:  # Если для стоп заявки не указан торговый сервер
                 server = self.get_server(si['primary_board'])  # то ищем его в справочнике площадки
                 if not server:  # Если торговый сервер не найден
-                    print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отклонена. Торговый сервер (server) не найден для заявки типа {order.exectype}')
+                    self.logger.warning(f'Постановка заявки {order.ref} по тикеру {board}.{symbol} на бирже {exchange} отклонена. Торговый сервер (server) не найден для заявки типа {order.exectype}')
                     order.reject(self)  # то отклоняем заявку
                     self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
                     return order  # Возвращаем отклоненную заявку
@@ -305,7 +312,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         if not transmit or parent:  # Для родительской/дочерних заявок
             parent_ref = getattr(order.parent, 'ref', order.ref)  # Номер транзакции родительской заявки или номер заявки, если родительской заявки нет
             if order.ref != parent_ref and parent_ref not in self.pcs:  # Если есть родительская заявка, но она не найдена в очереди родительских/дочерних заявок
-                print(f'Постановка заявки {order.ref} по тикеру {exchange}.{symbol} отклонена. Родительская заявка не найдена')
+                self.logger.warning(f'Постановка заявки {order.ref} по тикеру {board}.{symbol} на бирже {exchange} отклонена. Родительская заявка не найдена')
                 order.reject(self)  # то отклоняем заявку
                 self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
                 return order  # Возвращаем отклоненную заявку
@@ -318,15 +325,15 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                 self.notifs.append(order.clone())  # Удедомляем брокера о создании новой заявки
                 return self.place_order(order.parent)  # Отправляем родительскую заявку на биржу
         # Если не последняя заявка в цепочке родительской/дочерних заявок (transmit=False)
-        return order  # то возвращаем созданную заявку со статусом Created. На биржу ее пока не ставим
+        return order  # то возвращаем созданную заявку со статусом Created. На биржу ее пока не отправляем
 
     def place_order(self, order: Order):
         """Отправка заявки на биржу"""
         side = 'buy' if order.isbuy() else 'sell'  # Покупка/продажа
         portfolio = order.info['portfolio']  # Портфель
         account = self.portfolios_accounts[portfolio]  # Счет портфеля провайдера
-        exchange = order.info['exchange']  # Код биржи
-        symbol = order.info['symbol']  # Код тикера
+        symbol = order.info['symbol']  # Тикер
+        exchange = order.info['exchange']  # Биржа тикера
         si = self.provider.get_symbol_info(exchange, symbol)  # Информация о тикере
         quantity = abs(order.size // si['lotsize'])  # Размер позиции в лотах. В Алор всегда передается положительный размер лота
         response = None  # Результат запроса
@@ -347,7 +354,8 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         order.submit(self)  # Отправляем заявку на биржу
         self.notifs.append(order.clone())  # Уведомляем брокера об отправке заявки на биржу
         if not response:  # Если при отправке заявки на биржу произошла веб ошибка
-            print(f'Постановка заявки по тикеру {exchange}.{symbol} отклонена. Ошибка веб сервиса')
+            board = order.info['board']  # Режим торгов
+            self.logger.warning(f'Постановка заявки по тикеру {board}.{symbol} на бирже {exchange} отклонена. Ошибка веб сервиса')
             order.reject(self)  # то отклоняем заявку
             self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
             return order  # Возвращаем отклоненную заявку
@@ -422,7 +430,6 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
 
     def on_stop_order(self, response):
         """Обработка стоп-заявок на отмену (canceled) и исполнение (filled). Статусы working и rejected обрабатываются в place_order и on_trade"""
-        print(response)  # Для отладки
         data = response['data']  # Данные заявки
         status = data['status']  # Статус заявки: working - на исполнении, filled - исполнена, canceled - отменена, rejected - отклонена
         if status not in ('filled', 'canceled'):  # Для стоп-заявки интересует отмена и исполнение, которое не приводит к сделке
