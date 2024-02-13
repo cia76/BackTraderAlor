@@ -27,6 +27,8 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         ('live_bars', False),  # False - только история, True - история и новые бары
     )
     datapath = os.path.join('..', '..', 'Data', 'Alor', '')  # Путь до файла истории
+    delimiter = '\t'  # Разделитель значений в файле истории. По умолчанию табуляция
+    dt_format = '%d.%m.%Y %H:%M'  # Формат представления даты и времени в файле истории. По умолчанию русский формат
 
     def islive(self):
         """Если подаем новые бары, то Cerebro не будет запускать preload и runonce, т.к. новые бары должны идти один за другим"""
@@ -70,7 +72,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
                 # С 09:00 до 10:00 Алор перезапускает сервер, и подписка на последний бар предыдущей сессии по фьючерсам пропадает.
                 # В этом случае нужно брать данные не из подписки, а из расписания
                 seconds_from = self.get_seconds_from()  # Дата и время начала выборки
-                self.logger.debug(f'Запуск подписки на новые бары с {self.store.provider.utc_timestamp_to_msk_datetime(seconds_from).strftime("%d.%m.%Y %H:%M:%S")}')
+                self.logger.debug(f'Запуск подписки на новые бары с {self.store.provider.utc_timestamp_to_msk_datetime(seconds_from).strftime(self.dt_format)}')
                 self.guid = self.store.provider.bars_get_and_subscribe(self.exchange, self.symbol, self.alor_timeframe, seconds_from, 1_000_000_000)  # Подписываемся на бары, получаем guid подписки
                 self.logger.debug(f'Код подписки {self.guid}')
 
@@ -102,7 +104,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
                        volume=new_bar['volume'])  # Бар из хранилища новых баров
             if not self.is_bar_valid(bar):  # Если бар не соответствует всем условиям выборки
                 return None  # то пропускаем бар, будем заходить еще
-            self.logger.debug(f'Сохранение нового бара с {bar["datetime"].strftime("%d.%m.%Y %H:%M")} в файл')
+            self.logger.debug(f'Сохранение нового бара с {bar["datetime"].strftime(self.dt_format)} в файл')
             self.save_bar_to_file(bar)  # Сохраняем бар в конец файла
             if self.last_bar_received and not self.live_mode:  # Если получили последний бар и еще не находимся в режиме получения новых баров (LIVE)
                 self.put_notification(self.LIVE)  # Отправляем уведомление о получении новых баров
@@ -140,22 +142,22 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
             self.logger.warning(f'Файл {self.file_name} не найден и будет создан')
             return  # то выходим, дальше не продолжаем
         with open(self.file_name) as file:  # Открываем файл на последовательное чтение
-            reader = csv.reader(file, delimiter='\t')  # Данные в строке разделены табуляцией
+            reader = csv.reader(file, delimiter=self.delimiter)  # Данные в строке разделены табуляцией
             next(reader, None)  # Пропускаем первую строку с заголовками
             for csv_row in reader:  # Последовательно получаем все строки файла
-                bar = dict(datetime=datetime.strptime(csv_row[0], '%d.%m.%Y %H:%M'),
+                bar = dict(datetime=datetime.strptime(csv_row[0], self.dt_format),
                            open=float(csv_row[1]), high=float(csv_row[2]), low=float(csv_row[3]), close=float(csv_row[4]),
                            volume=int(csv_row[5]))  # Бар из файла
                 if self.is_bar_valid(bar):  # Если исторический бар соответствует всем условиям выборки
                     self.history_bars.append(bar)  # то добавляем бар
         if len(self.history_bars) > 0:  # Если были получены бары из файла
-            self.logger.debug(f'Получено бар из файла: {len(self.history_bars)} с {self.history_bars[0]["datetime"].strftime("%d.%m.%Y %H:%M")} по {self.history_bars[-1]["datetime"].strftime("%d.%m.%Y %H:%M")}')
+            self.logger.debug(f'Получено бар из файла: {len(self.history_bars)} с {self.history_bars[0]["datetime"].strftime(self.dt_format)} по {self.history_bars[-1]["datetime"].strftime(self.dt_format)}')
 
     def get_bars_from_history(self) -> None:
         """Получение бар из истории"""
         file_history_bars_len = len(self.history_bars)  # Кол-во полученных бар из файла для лога
         seconds_from = self.get_seconds_from()  # Дата и время начала выборки
-        self.logger.debug(f'Получение бар из истории с {self.store.provider.utc_timestamp_to_msk_datetime(seconds_from).strftime("%d.%m.%Y %H:%M:%S")}')
+        self.logger.debug(f'Получение бар из истории с {self.store.provider.utc_timestamp_to_msk_datetime(seconds_from).strftime(self.dt_format)}')
         seconds_to = self.store.provider.msk_datetime_to_utc_timestamp(self.p.todate) if self.p.todate else 32536799999  # Дата и время окончания выборки
         history_bars = self.store.provider.get_history(self.exchange, self.symbol, self.alor_timeframe, seconds_from, seconds_to)  # Получаем бары из Алор
         if not history_bars or 'history' not in history_bars:  # Если бары не получены
@@ -169,7 +171,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
             if self.is_bar_valid(bar):  # Если исторический бар соответствует всем условиям выборки
                 self.history_bars.append(bar)  # то добавляем бар
         if len(self.history_bars) - file_history_bars_len > 0:  # Если получены бары из истории
-            self.logger.debug(f'Получено бар из истории: {len(self.history_bars) - file_history_bars_len} с {self.history_bars[file_history_bars_len]["datetime"].strftime("%d.%m.%Y %H:%M")} по {self.history_bars[-1]["datetime"].strftime("%d.%m.%Y %H:%M")}')
+            self.logger.debug(f'Получено бар из истории: {len(self.history_bars) - file_history_bars_len} с {self.history_bars[file_history_bars_len]["datetime"].strftime(self.dt_format)} по {self.history_bars[-1]["datetime"].strftime(self.dt_format)}')
             for i in range(file_history_bars_len, len(self.history_bars)):  # Пробегаемся по полученным данным из истории
                 self.save_bar_to_file(self.history_bars[i])
         else:  # Бары из истории не получены
@@ -187,7 +189,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
             if exit_event_set:  # Если произошло событие выхода из потока
                 self.logger.warning('Отмена получения новых бар по расписанию')
                 return  # Выходим из потока, дальше не продолжаем
-            self.logger.debug(f'Получение новых бар по расписанию с {trade_bar_open_datetime.strftime("%d.%m.%Y %H:%M")}')
+            self.logger.debug(f'Получение новых бар по расписанию с {trade_bar_open_datetime.strftime(self.dt_format)}')
             seconds_from = self.p.schedule.msk_datetime_to_utc_timestamp(trade_bar_open_datetime)  # Дата и время бара в timestamp UTC
             bars = self.store.provider.get_history(self.exchange, self.symbol, self.alor_timeframe, seconds_from)  # Получаем ответ на запрос истории рынка
             if not bars:  # Если ничего не получили
@@ -309,9 +311,9 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
     def save_bar_to_file(self, bar) -> None:
         """Сохранение бара в конец файла"""
         with open(self.file_name, 'a+', newline='') as file:  # Создаем файл, если его нет. Открываем файл на добавление в конец. Ставим newline, чтобы в Windows не создавались пустые строки в файле
-            writer = csv.writer(file, delimiter='\t')  # Данные в строке разделены табуляцией
+            writer = csv.writer(file, delimiter=self.delimiter)  # Данные в строке разделены табуляцией
             csv_row = bar.copy()  # Копируем бар для того, чтобы изменить формат даты
-            csv_row['datetime'] = csv_row['datetime'].strftime('%d.%m.%Y %H:%M')  # Приводим дату к формату файла
+            csv_row['datetime'] = csv_row['datetime'].strftime(self.dt_format)  # Приводим дату к формату файла
             writer.writerow(csv_row.values())  # Записываем бар в конец файла
             self.logger.debug(f'В файл {self.file_name} записан бар на {csv_row["datetime"]}')
 
