@@ -351,7 +351,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             stop_price = self.provider.price_to_alor_price(exchange, symbol, order.price)  # Стоп цена
             limit_price = self.provider.price_to_alor_price(exchange, symbol, order.pricelimit)  # Лимитная цена
             response = self.provider.create_stop_loss_limit_order(server, account, portfolio, exchange, symbol, side, quantity, stop_price, limit_price)
-        order.submit(self)  # Отправляем заявку на биржу
+        order.submit(self)  # Отправляем заявку на биржу (Order.Submitted)
         self.notifs.append(order.clone())  # Уведомляем брокера об отправке заявки на биржу
         if not response:  # Если при отправке заявки на биржу произошла веб ошибка
             board = order.info['board']  # Режим торгов
@@ -359,8 +359,8 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             order.reject(self)  # то отклоняем заявку
             self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
             return order  # Возвращаем отклоненную заявку
-        order.accept(self)  # Заявка принята на бирже
         order.addinfo(order_number=response['orderNumber'])  # Сохраняем пришедший номер заявки на бирже
+        order.accept(self)  # Заявка принята на бирже (Order.Accepted)
         self.orders[order.ref] = order  # Сохраняем заявку в списке заявок, отправленных на биржу
         return order  # Возвращаем заявку
 
