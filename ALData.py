@@ -38,18 +38,18 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         self.store = ALStore(**kwargs)  # Передаем параметры в хранилище Алор. Может работать самостоятельно, не через хранилище
         self.alor_timeframe = self.bt_timeframe_to_alor_timeframe(self.p.timeframe, self.p.compression)  # Конвертируем временной интервал из BackTrader в Алор
         self.tf = self.bt_timeframe_to_tf(self.p.timeframe, self.p.compression)  # Конвертируем временной интервал из BackTrader для имени файла истории и расписания
-        self.intraday = self.p.timeframe in (TimeFrame.Minutes, TimeFrame.Seconds)  # Внутридневной временной интервал
-        self.board, self.symbol = self.store.provider.dataname_to_board_symbol(self.p.dataname)  # По тикеру получаем код режима торгов и код тикера
+        self.intraday = self.p.timeframe in (TimeFrame.Minutes, TimeFrame.Seconds)  # Внутридневной временной интервал. Алор измеряет внутридневные интервалы в секундах
+        self.board, self.symbol = self.store.provider.dataname_to_board_symbol(self.p.dataname)  # По тикеру получаем код режима торгов и тикера
         self.file = f'{self.board}.{self.symbol}_{self.tf}'  # Имя файла истории
         self.logger = logging.getLogger(f'ALData.{self.file}')  # Будем вести лог
         self.file_name = f'{self.datapath}{self.file}.txt'  # Полное имя файла истории
         self.exchange = self.store.provider.get_exchange(self.board, self.symbol)  # Биржа тикера. В Алор запросы выполняются по коду биржи и тикера
-        self.history_bars = []  # Исторические бары после применения фильтров
+        self.history_bars = []  # Исторические бары из файла и истории после проверки на соответствие условиям выборки
         self.guid = None  # Идентификатор подписки/расписания на историю цен
         self.exit_event = Event()  # Определяем событие выхода из потока
         self.dt_last_open = datetime.min  # Дата и время открытия последнего полученного бара
         self.last_bar_received = False  # Получен последний бар
-        self.live_mode = False  # Режим получения баров. False = История, True = Новые бары
+        self.live_mode = False  # Режим получения бар. False = История, True = Новые бары
 
     def setenvironment(self, env):
         """Добавление хранилища Алор в cerebro"""
@@ -58,11 +58,11 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
 
     def start(self):
         super(ALData, self).start()
-        self.put_notification(self.DELAYED)  # Отправляем уведомление об отправке исторических (не новых) баров
+        self.put_notification(self.DELAYED)  # Отправляем уведомление об отправке исторических (не новых) бар
         self.get_bars_from_file()  # Получаем бары из файла
         self.get_bars_from_history()  # Получаем бары из истории
         if len(self.history_bars) > 0:  # Если был получен хотя бы 1 бар
-            self.put_notification(self.CONNECTED)  # то отправляем уведомление о подключении и начале получения исторических баров
+            self.put_notification(self.CONNECTED)  # то отправляем уведомление о подключении и начале получения исторических бар
         if self.p.live_bars:  # Если получаем историю и новые бары
             if self.p.schedule:  # Если получаем новые бары по расписанию
                 self.guid = uuid4().hex  # guid расписания
@@ -77,18 +77,18 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
                 self.logger.debug(f'Код подписки {self.guid}')
 
     def _load(self):
-        """Загружаем бар из истории или новый бар в BackTrader"""
+        """Загрузка бара из истории или нового бара"""
         if not self.p.live_bars:  # Если получаем только историю (self.history_bars)
             if len(self.history_bars) == 0:  # Если исторических данных нет / Все исторические данные получены
-                self.put_notification(self.DISCONNECTED)  # Отправляем уведомление об окончании получения исторических баров
+                self.put_notification(self.DISCONNECTED)  # Отправляем уведомление об окончании получения исторических бар
                 self.logger.debug('Бары из файла/истории отправлены в ТС. Новые бары получать не нужно. Выход')
                 return False  # Больше сюда заходить не будем
             bar = self.history_bars[0]  # Берем первый бар из выборки, с ним будем работать
-            self.history_bars.remove(bar)  # Убираем его из хранилища новых баров
+            self.history_bars.remove(bar)  # Убираем его из хранилища новых бар
         else:  # Если получаем историю и новые бары (self.store.new_bars)
-            if len(self.store.new_bars) == 0:  # Если в хранилище никаких новых баров нет
+            if len(self.store.new_bars) == 0:  # Если в хранилище никаких новых бар нет
                 return None  # то нового бара нет, будем заходить еще
-            new_bars = [b for b in self.store.new_bars if b['guid'] == self.guid]  # Смотрим в хранилище новых баров бары с guid подписки
+            new_bars = [b for b in self.store.new_bars if b['guid'] == self.guid]  # Смотрим в хранилище новых бар бары с guid подписки
             if len(new_bars) == 0:  # Если новый бар еще не появился
                 self.logger.debug('Новых бар нет')
                 return None  # то нового бара нет, будем заходить еще
@@ -101,16 +101,16 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
             dt_open = self.get_bar_open_date_time(new_bar['time'])  # Дата и время открытия бара
             bar = dict(datetime=dt_open,
                        open=new_bar['open'], high=new_bar['high'], low=new_bar['low'], close=new_bar['close'],
-                       volume=new_bar['volume'])  # Бар из хранилища новых баров
+                       volume=new_bar['volume'])  # Бар из хранилища новых бар
             if not self.is_bar_valid(bar):  # Если бар не соответствует всем условиям выборки
                 return None  # то пропускаем бар, будем заходить еще
             self.logger.debug(f'Сохранение нового бара с {bar["datetime"].strftime(self.dt_format)} в файл')
             self.save_bar_to_file(bar)  # Сохраняем бар в конец файла
-            if self.last_bar_received and not self.live_mode:  # Если получили последний бар и еще не находимся в режиме получения новых баров (LIVE)
-                self.put_notification(self.LIVE)  # Отправляем уведомление о получении новых баров
-                self.live_mode = True  # Переходим в режим получения новых баров (LIVE)
-            elif self.live_mode and not self.last_bar_received:  # Если находимся в режиме получения новых баров (LIVE)
-                self.put_notification(self.DELAYED)  # Отправляем уведомление об отправке исторических (не новых) баров
+            if self.last_bar_received and not self.live_mode:  # Если получили последний бар и еще не находимся в режиме получения новых бар (LIVE)
+                self.put_notification(self.LIVE)  # Отправляем уведомление о получении новых бар
+                self.live_mode = True  # Переходим в режим получения новых бар (LIVE)
+            elif self.live_mode and not self.last_bar_received:  # Если находимся в режиме получения новых бар (LIVE)
+                self.put_notification(self.DELAYED)  # Отправляем уведомление об отправке исторических (не новых) бар
                 self.live_mode = False  # Переходим в режим получения истории
         # Все проверки пройдены. Записываем полученный исторический/новый бар
         self.lines.datetime[0] = date2num(bar['datetime'])  # DateTime
@@ -130,7 +130,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
             else:  # Если получаем новые бары по подписке
                 self.logger.info(f'Отмена подписки {self.guid} на новые бары')
                 self.store.provider.unsubscribe(self.guid)  # то отменяем подписку
-            self.put_notification(self.DISCONNECTED)  # Отправляем уведомление об окончании получения новых баров
+            self.put_notification(self.DISCONNECTED)  # Отправляем уведомление об окончании получения новых бар
         self.store.DataCls = None  # Удаляем класс данных в хранилище
 
     # Получение бар
@@ -170,10 +170,9 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
                        volume=history_bar['volume'])  # Бар из истории
             if self.is_bar_valid(bar):  # Если исторический бар соответствует всем условиям выборки
                 self.history_bars.append(bar)  # то добавляем бар
+                self.save_bar_to_file(bar)  # и сохраняем его в файл
         if len(self.history_bars) - file_history_bars_len > 0:  # Если получены бары из истории
             self.logger.debug(f'Получено бар из истории: {len(self.history_bars) - file_history_bars_len} с {self.history_bars[file_history_bars_len]["datetime"].strftime(self.dt_format)} по {self.history_bars[-1]["datetime"].strftime(self.dt_format)}')
-            for i in range(file_history_bars_len, len(self.history_bars)):  # Пробегаемся по полученным данным из истории
-                self.save_bar_to_file(self.history_bars[i])
         else:  # Бары из истории не получены
             self.logger.debug('Из истории новых бар не получено')
 
@@ -204,12 +203,12 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
                 continue  # то будем получать следующий бар
             bar = bars[0]  # Получаем первый (завершенный) бар
             self.logger.debug('Получен бар по расписанию')
-            self.store.new_bars.append(dict(guid=self.guid, data=bar))  # Обработчик новых баров по подписке из Алор
+            self.store.new_bars.append(dict(guid=self.guid, data=bar))  # Обработчик новых бар по подписке из Алор
 
     # Функции
 
     @staticmethod
-    def bt_timeframe_to_alor_timeframe(timeframe, compression) -> str:
+    def bt_timeframe_to_alor_timeframe(timeframe, compression=1) -> str:
         """Перевод временнОго интервала из BackTrader в Алор
 
         :param TimeFrame timeframe: Временной интервал
@@ -299,7 +298,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
             self.logger.debug(f'Дата/время открытия бара {dt_open} после окончания торговой сессии {self.p.sessionend}')
             return False  # то бар не соответствует условиям выборки
         if not self.p.four_price_doji and bar['high'] == bar['low']:  # Если не пропускаем дожи 4-х цен, но такой бар пришел
-            self.logger.debug(f'Бар - дожи 4-х цен')
+            self.logger.debug(f'Бар {dt_open} - дожи 4-х цен')
             return False  # то бар не соответствует условиям выборки
         time_market_now = self.get_alor_date_time_now()  # Текущее биржевое время
         if dt_close > time_market_now and time_market_now.time() < self.p.sessionend:  # Если время закрытия бара еще не наступило на бирже, и сессия еще не закончилась
