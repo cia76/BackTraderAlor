@@ -70,6 +70,7 @@ class ALStore(with_metaclass(MetaSingleton, object)):
 
     def start(self):
         for name, provider in self.providers.items():  # Пробегаемся по всем провайдерам
+            provider.OnNewBar = lambda response, n=name: self.new_bars.append(dict(guid=response['guid'], data=response['data']))  # Обработчик новых баров по подписке из Алор
             # События WebSocket Thread/Task для понимания, что происходит с провайдером
             provider.OnEntering = lambda n=name: self.logger.info(f'WebSocket Thread({n}): Запуск')
             provider.OnEnter = lambda n=name: self.logger.info(f'WebSocket Thread({n}): Запущен')
@@ -81,7 +82,6 @@ class ALStore(with_metaclass(MetaSingleton, object)):
             provider.OnError = lambda response,  n=name: self.logger.info(f'WebSocket Task({n}): {response}')
             provider.OnCancel = lambda n=name: self.logger.info(f'WebSocket Task({n}): Отмена')
             provider.OnExit = lambda n=name: self.logger.info(f'WebSocket Thread({n}): Завершение')
-            provider.OnNewBar = lambda response, n=name: self.new_bars.append(dict(guid=response['guid'], data=response['data']))  # Обработчик новых баров по подписке из Алор
 
     def put_notification(self, msg, *args, **kwargs):
         self.notifs.append((msg, args, kwargs))
