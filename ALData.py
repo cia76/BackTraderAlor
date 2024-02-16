@@ -182,8 +182,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         while True:
             market_datetime_now = self.p.schedule.utc_to_msk_datetime(datetime.utcnow())  # Текущее время на бирже
             trade_bar_open_datetime = self.p.schedule.trade_bar_open_datetime(market_datetime_now, self.tf)  # Дата и время открытия бара, который будем получать
-            trade_bar_close_datetime = self.p.schedule.trade_bar_close_datetime(market_datetime_now, self.tf)  # Дата и время закрытия бара, который будем получать
-            trade_bar_request_datetime = self.p.schedule.trade_bar_request_datetime(trade_bar_close_datetime, self.tf)  # Дата и время запроса бара на бирже
+            trade_bar_request_datetime = self.p.schedule.trade_bar_request_datetime(market_datetime_now, self.tf)  # Дата и время запроса бара на бирже
             sleep_time_secs = (trade_bar_request_datetime - market_datetime_now).total_seconds()  # Время ожидания в секундах
             self.logger.debug(f'Получение новых бар с {trade_bar_open_datetime.strftime(self.dt_format)} по расписанию в {trade_bar_request_datetime.strftime(self.dt_format)}. Ожидание {sleep_time_secs} с')
             exit_event_set = self.exit_event.wait(sleep_time_secs)  # Ждем нового бара или события выхода из потока
