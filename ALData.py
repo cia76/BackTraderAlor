@@ -310,7 +310,12 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
 
     def save_bar_to_file(self, bar) -> None:
         """Сохранение бара в конец файла"""
-        with open(self.file_name, 'a+', newline='') as file:  # Создаем файл, если его нет. Открываем файл на добавление в конец. Ставим newline, чтобы в Windows не создавались пустые строки в файле
+        if not os.path.isfile(self.file_name):  # Существует ли файл
+            self.logger.warning(f'Файл {self.file_name} не найден и будет создан')
+            with open(self.file_name, 'w', newline='') as file:  # Создаем файл
+                writer = csv.writer(file, delimiter=self.delimiter)  # Данные в строке разделены табуляцией
+                writer.writerow(bar.keys())  # Записываем заголовок в файл
+        with open(self.file_name, 'a', newline='') as file:  # Открываем файл на добавление в конец. Ставим newline, чтобы в Windows не создавались пустые строки в файле
             writer = csv.writer(file, delimiter=self.delimiter)  # Данные в строке разделены табуляцией
             csv_row = bar.copy()  # Копируем бар для того, чтобы изменить формат даты
             csv_row['datetime'] = csv_row['datetime'].strftime(self.dt_format)  # Приводим дату к формату файла
