@@ -241,14 +241,12 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
 
     def get_order(self, order_number) -> Union[Order, None]:
         """Заявка BackTrader по номеру заявки на бирже
+        Пробегаемся по всем заявкам на бирже. Если нашли совпадение с номером заявки на бирже, то возвращаем заявку BackTrader. Иначе, ничего не найдено
 
         :param order_number: Номер заявки на бирже
         :return: Заявка BackTrader или None
         """
-        for order in self.orders.values():  # Пробегаемся по всем заявкам на бирже
-            if order.info['order_number'] == order_number:  # Если нашли совпадение с номером заявки на бирже
-                return order  # то возвращаем заявку BackTrader
-        return None  # иначе, ничего не найдено
+        return next((order for order in self.orders.values() if order.info['order_number'] == order_number), None)
 
     def create_order(self, owner, data, size, price=None, plimit=None, exectype=None, valid=None, oco=None, parent=None, transmit=True, is_buy=True, **kwargs):
         """Создание заявки. Привязка параметров счета и тикера. Обработка связанных и родительской/дочерних заявок
