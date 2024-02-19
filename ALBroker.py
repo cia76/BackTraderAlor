@@ -44,25 +44,24 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                     self.portfolios_accounts[p] = portfolio['tks']  # то добавляем код портфеля/счета в список
                     self.logger.debug(f'Портфель {p}, Счет {self.portfolios_accounts[p]}')
         self.notifs = collections.deque()  # Очередь уведомлений брокера о заявках
-        self.startingcash = self.cash = 0  # Стартовые и текущие свободные средства по счету
-        self.startingvalue = self.value = 0  # Стартовая и текущая стоимость позиций
+        self.startingcash = self.cash = self.getcash()  # Стартовые и текущие свободные средства по счету
+        self.startingvalue = self.value = self.getvalue()  # Стартовая и текущая стоимость позиций
         self.cash_value = {}  # Справочник Свободные средства/Стоимость позиций
         self.positions = collections.defaultdict(Position)  # Список позиций
         self.orders = collections.OrderedDict()  # Список заявок, отправленных на биржу
         self.ocos = {}  # Список связанных заявок (One Cancel Others)
         self.pcs = collections.defaultdict(collections.deque)  # Очередь всех родительских/дочерних заявок (Parent - Children)
 
-    def start(self):
-        super(ALBroker, self).start()
         self.provider.OnPosition = self.on_position  # Обработка позиций
         self.provider.OnTrade = self.on_trade  # Обработка сделок
         self.provider.OnOrder = self.on_order  # Обработка заявок
         self.provider.OnStopOrder = self.on_stop_order  # Обработка стоп-заявок
         # self.provider.OnStopOrderV2 = self.on_stop_order  # Обработка стоп-заявок
+
+    def start(self):
+        super(ALBroker, self).start()
         if self.p.use_positions:  # Если нужно при запуске брокера получить текущие позиции на бирже
             self.get_all_active_positions()  # то получаем их
-        self.startingcash = self.cash = self.getcash()  # Стартовые и текущие свободные средства по счету. Подписка на позиции для портфеля/биржи
-        self.startingvalue = self.value = self.getvalue()  # Стартовая и текущая стоимость позиций
 
     def getcash(self, portfolio=None):
         """Свободные средства по портфелю/бирже, по всем счетам"""
