@@ -124,7 +124,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
 
     def stop(self):
         super(ALData, self).stop()
-        if self.guid is not None:  # Если была подписка/расписание
+        if self.p.live_bars:  # Если была подписка/расписание
             if self.p.schedule:  # Если получаем новые бары по расписанию
                 self.exit_event.set()  # то отменяем расписание
             else:  # Если получаем новые бары по подписке
@@ -137,10 +137,9 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
 
     def get_bars_from_file(self) -> None:
         """Получение бар из файла"""
-        self.logger.debug(f'Получение бар из файла {self.file_name}')
         if not os.path.isfile(self.file_name):  # Если файл не существует
-            self.logger.warning(f'Файл {self.file_name} не найден и будет создан')
             return  # то выходим, дальше не продолжаем
+        self.logger.debug(f'Получение бар из файла {self.file_name}')
         with open(self.file_name) as file:  # Открываем файл на последовательное чтение
             reader = csv.reader(file, delimiter=self.delimiter)  # Данные в строке разделены табуляцией
             next(reader, None)  # Пропускаем первую строку с заголовками
@@ -159,15 +158,18 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         seconds_from = self.get_seconds_from()  # Дата и время начала выборки
         self.logger.debug(f'Получение бар из истории с {self.store.provider.utc_timestamp_to_msk_datetime(seconds_from).strftime(self.dt_format)}')
         seconds_to = self.store.provider.msk_datetime_to_utc_timestamp(self.p.todate) if self.p.todate else 32536799999  # Дата и время окончания выборки
-        history_bars = self.store.provider.get_history(self.exchange, self.symbol, self.alor_timeframe, seconds_from, seconds_to)  # Получаем бары из Алор
-        if not history_bars or 'history' not in history_bars:  # Если бары не получены
-            self.logger.error(f'Ошибка при получении бар из истории. exchange={self.exchange}, symbol={self.symbol}, timeframe={self.alor_timeframe}, seconds_from={seconds_from}, seconds_to={seconds_to}')
+        response = self.store.provider.get_history(self.exchange, self.symbol, self.alor_timeframe, seconds_from, seconds_to)  # Получаем бары из Алор
+        if not response:  # Если в ответ ничего не получили
+            self.logger.warning('Ошибка запроса бар из истории')
             return  # то выходим, дальше не продолжаем
-        history_bars = history_bars['history']  # Полученные бары истории
-        for history_bar in history_bars:  # Пробегаемся по всем полученным барам
-            bar = dict(datetime=self.get_bar_open_date_time(history_bar['time']),
-                       open=history_bar['open'], high=history_bar['high'], low=history_bar['low'], close=history_bar['close'],
-                       volume=history_bar['volume'])  # Бар из истории
+        if 'history' not in response:  # Если бары не получены
+            self.logger.error(f'Бар (history) нет в словаре {response}')
+            return  # то выходим, дальше не продолжаем
+        new_bars_dict = response['history']  # Словарь полученных бар истории
+        for new_bar in new_bars_dict:  # Пробегаемся по всем полученным барам
+            bar = dict(datetime=self.get_bar_open_date_time(new_bar['time']),
+                       open=new_bar['open'], high=new_bar['high'], low=new_bar['low'], close=new_bar['close'],
+                       volume=new_bar['volume'])  # Бар из истории
             if self.is_bar_valid(bar):  # Если исторический бар соответствует всем условиям выборки
                 self.history_bars.append(bar)  # то добавляем бар
                 self.save_bar_to_file(bar)  # и сохраняем его в файл
@@ -189,22 +191,21 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
             if exit_event_set:  # Если произошло событие выхода из потока
                 self.logger.warning('Отмена получения новых бар по расписанию')
                 return  # Выходим из потока, дальше не продолжаем
-            self.logger.debug(f'Получение новых бар по расписанию с {trade_bar_open_datetime.strftime(self.dt_format)}')
             seconds_from = self.p.schedule.msk_datetime_to_utc_timestamp(trade_bar_open_datetime)  # Дата и время бара в timestamp UTC
-            bars = self.store.provider.get_history(self.exchange, self.symbol, self.alor_timeframe, seconds_from)  # Получаем ответ на запрос истории рынка
-            if not bars:  # Если ничего не получили
-                self.logger.warning('По расписанию ничего не получено')
+            response = self.store.provider.get_history(self.exchange, self.symbol, self.alor_timeframe, seconds_from)  # Получаем ответ на запрос истории рынка
+            if not response:  # Если в ответ ничего не получили
+                self.logger.warning('Ошибка запроса бар из истории по расписанию')
                 continue  # то будем получать следующий бар
-            if 'history' not in bars:  # Если не получили историю
-                self.logger.warning('По расписанию бары не получены')
+            if 'history' not in response:  # Если бар нет в словаре
+                self.logger.warning(f'Бар (candles) нет в истории по расписанию {response}')
                 continue  # то будем получать следующий бар
-            bars = bars['history']  # Последний сформированный и текущий несформированный (если имеется) бары
+            bars = response['history']  # Последний сформированный и текущий несформированный (если имеется) бары
             if len(bars) == 0:  # Если бары не получены
-                self.logger.warning('По расписанию новые бары не получены')
+                self.logger.warning('Новые бары по расписанию не получены')
                 continue  # то будем получать следующий бар
             bar = bars[0]  # Получаем первый (завершенный) бар
             self.logger.debug('Получен бар по расписанию')
-            self.store.new_bars.append(dict(guid=self.guid, data=bar))  # Обработчик новых бар по подписке из Алор
+            self.store.new_bars.append(dict(guid=self.guid, data=bar))  # Добавляем в хранилище новых бар
 
     # Функции
 
