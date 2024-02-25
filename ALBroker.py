@@ -44,9 +44,9 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                     self.portfolios_accounts[p] = portfolio['tks']  # то добавляем код портфеля/счета в список
                     self.logger.debug(f'Портфель {p}, Счет {self.portfolios_accounts[p]}')
         self.notifs = collections.deque()  # Очередь уведомлений брокера о заявках
+        self.cash_value = {}  # Справочник Свободные средства/Стоимость позиций
         self.startingcash = self.cash = self.getcash()  # Стартовые и текущие свободные средства по счету
         self.startingvalue = self.value = self.getvalue()  # Стартовая и текущая стоимость позиций
-        self.cash_value = {}  # Справочник Свободные средства/Стоимость позиций
         self.positions = collections.defaultdict(Position)  # Список позиций
         self.orders = collections.OrderedDict()  # Список заявок, отправленных на биржу
         self.ocos = {}  # Список связанных заявок (One Cancel Others)
