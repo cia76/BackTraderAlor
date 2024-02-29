@@ -87,7 +87,7 @@ if __name__ == '__main__':  # Точка входа при запуске это
     broker = store.getbroker(use_positions=False)  # Брокер Alor
     # noinspection PyArgumentList
     cerebro.setbroker(broker)  # Устанавливаем брокера
-    data = store.getdata(dataname=symbol, timeframe=bt.TimeFrame.Minutes, compression=1, account_id=1, live_bars=True)  # Исторические и новые минутные бары за все время по подписке
+    data = store.getdata(dataname=symbol, timeframe=bt.TimeFrame.Minutes, compression=1, account_id=0, live_bars=True)  # Исторические и новые минутные бары за все время по подписке
     # data = store.getdata(dataname=symbol, timeframe=bt.TimeFrame.Minutes, compression=1, schedule=schedule, live_bars=True)  # Исторические и новые минутные бары за все время по расписанию
     cerebro.adddata(data)  # Добавляем данные
     cerebro.addsizer(bt.sizers.FixedSize, stake=10)  # Кол-во акций в штуках для покупки/продажи
