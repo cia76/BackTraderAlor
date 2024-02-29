@@ -21,7 +21,7 @@ class MetaALData(AbstractDataBase.__class__):
 class ALData(with_metaclass(MetaALData, AbstractDataBase)):
     """Данные Алор"""
     params = (
-        ('provider_name', None),  # Название провайдера. Если не задано, то первое название по ключу name
+        ('account_id', 0),  # Порядковый номер счета
         ('four_price_doji', False),  # False - не пропускать дожи 4-х цен, True - пропускать
         ('schedule', None),  # Расписание работы биржи. Если не задано, то берем из подписки
         ('live_bars', False),  # False - только история, True - история и новые бары
@@ -34,16 +34,17 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         """Если подаем новые бары, то Cerebro не будет запускать preload и runonce, т.к. новые бары должны идти один за другим"""
         return self.p.live_bars
 
-    def __init__(self, **kwargs):
-        self.store = ALStore(**kwargs)  # Передаем параметры в хранилище Алор. Может работать самостоятельно, не через хранилище
-        self.alor_timeframe = self.bt_timeframe_to_alor_timeframe(self.p.timeframe, self.p.compression)  # Конвертируем временной интервал из BackTrader в Алор
-        self.tf = self.bt_timeframe_to_tf(self.p.timeframe, self.p.compression)  # Конвертируем временной интервал из BackTrader для имени файла истории и расписания
+    def __init__(self):
+        self.store = ALStore()  # Хранилище Алор
         self.intraday = self.p.timeframe in (TimeFrame.Minutes, TimeFrame.Seconds)  # Внутридневной временной интервал. Алор измеряет внутридневные интервалы в секундах
         self.board, self.symbol = self.store.provider.dataname_to_board_symbol(self.p.dataname)  # По тикеру получаем код режима торгов и тикера
+        self.exchange = self.store.provider.get_exchange(self.board, self.symbol)  # Биржа тикера. В Алор запросы выполняются по коду биржи и тикера
+        self.portfolio = self.store.provider.get_account(self.board, self.p.account_id)['portfolio']  # Портфель тикера.
+        self.alor_timeframe = self.bt_timeframe_to_alor_timeframe(self.p.timeframe, self.p.compression)  # Конвертируем временной интервал из BackTrader в Алор
+        self.tf = self.bt_timeframe_to_tf(self.p.timeframe, self.p.compression)  # Конвертируем временной интервал из BackTrader для имени файла истории и расписания
         self.file = f'{self.board}.{self.symbol}_{self.tf}'  # Имя файла истории
         self.logger = logging.getLogger(f'ALData.{self.file}')  # Будем вести лог
         self.file_name = f'{self.datapath}{self.file}.txt'  # Полное имя файла истории
-        self.exchange = self.store.provider.get_exchange(self.board, self.symbol)  # Биржа тикера. В Алор запросы выполняются по коду биржи и тикера
         self.history_bars = []  # Исторические бары из файла и истории после проверки на соответствие условиям выборки
         self.guid = None  # Идентификатор подписки/расписания на историю цен
         self.exit_event = Event()  # Определяем событие выхода из потока
@@ -73,21 +74,21 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
                 # В этом случае нужно брать данные не из подписки, а из расписания
                 seconds_from = self.get_seconds_from()  # Дата и время начала выборки
                 self.logger.debug(f'Запуск подписки на новые бары с {self.store.provider.utc_timestamp_to_msk_datetime(seconds_from).strftime(self.dt_format)}')
-                self.guid = self.store.provider.bars_get_and_subscribe(self.exchange, self.symbol, self.alor_timeframe, seconds_from, 1_000_000_000)  # Подписываемся на бары, получаем guid подписки
+                self.guid = self.store.provider.bars_get_and_subscribe(self.exchange, self.symbol, self.alor_timeframe, seconds_from, frequency=1_000_000_000)  # Подписываемся на бары, получаем guid подписки
                 self.logger.debug(f'Код подписки {self.guid}')
 
     def _load(self):
         """Загрузка бара из истории или нового бара"""
-        if not self.p.live_bars and len(self.history_bars) == 0:  # Если получаем только историю (self.history_bars) и исторических данных нет / все исторические данные получены
+        if len(self.history_bars) > 0:  # Если есть исторические данные
+            bar = self.history_bars.pop(0)  # Берем и удаляем первый бар из хранилища. С ним будем работать
+        elif not self.p.live_bars:  # Если получаем только историю (self.history_bars) и исторических данных нет / все исторические данные получены
             self.put_notification(self.DISCONNECTED)  # Отправляем уведомление об окончании получения исторических бар
             self.logger.debug('Бары из файла/истории отправлены в ТС. Новые бары получать не нужно. Выход')
             return False  # Больше сюда заходить не будем
-        if len(self.history_bars) > 0:  # Если есть исторические данные
-            bar = self.history_bars.pop(0)  # Берем и удаляем первый бар из хранилища. С ним будем работать
         else:  # Если получаем историю и новые бары (self.store.new_bars)
             if len(self.store.new_bars) == 0:  # Если в хранилище никаких новых бар нет
                 return None  # то нового бара нет, будем заходить еще
-            new_bars = [b for b in self.store.new_bars if b['guid'] == self.guid]  # Смотрим в хранилище новых бар бары с guid подписки
+            new_bars = [new_bar for new_bar in self.store.new_bars if new_bar['guid'] == self.guid]  # Смотрим в хранилище новых бар бары с guid подписки
             if len(new_bars) == 0:  # Если новый бар еще не появился
                 self.logger.debug('Новых бар нет')
                 return None  # то нового бара нет, будем заходить еще
