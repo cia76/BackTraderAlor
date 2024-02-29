@@ -95,9 +95,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         return self.cancel_order(order)
 
     def get_notification(self):
-        if not self.notifs:  # Если в списке уведомлений ничего нет
-            return None  # то ничего и возвращаем, выходим, дальше не продолжаем
-        return self.notifs.popleft()  # Удаляем и возвращаем крайний левый элемент списка уведомлений
+        return self.notifs.popleft() if self.notifs else None  # Удаляем и возвращаем крайний левый элемент списка уведомлений или ничего
 
     def next(self):
         self.notifs.append(None)  # Добавляем в список уведомлений пустой элемент
@@ -151,7 +149,8 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
 
     def get_all_active_positions(self):
         """Все активные позиции в т.ч. денежные по всем клиентским портфелям и биржам"""
-        cash = 0  # Свободные средства по всем клиентским портфелям и биржам
+        cash = 0  # Будем набирать свободные средства
+        value = 0  # Будем набирать стоимость позиций
         for account in self.store.provider.accounts:  # Пробегаемся по всем счетам
             portfolio = account['portfolio']  # Портфель
             for exchange in account['exchanges']:  # Пробегаемся по всем биржам
@@ -168,8 +167,10 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                         board = si['board']  # Код режима торгов
                         size = position['qty'] * si['lotsize']  # Кол-во в штуках
                         price = self.store.provider.alor_price_to_price(exchange, symbol, position['avgPrice'])  # Цена входа
+                        value += price * size  # Увеличиваем общий размер стоимости позиций
                     self.positions[(portfolio, exchange, board, symbol)] = Position(size, price)  # Сохраняем в списке открытых позиций
-        self.cash = cash  # Сохраняем свободные средства по всем клиентским портфелям и биржам
+        self.cash = cash  # Сохраняем текущие свободные средства
+        self.value = value  # Сохраняем текущую стоимость позиций
 
     def get_order(self, order_number) -> Union[Order, None]:
         """Заявка BackTrader по номеру заявки на бирже
@@ -189,25 +190,23 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             else SellOrder(owner=owner, data=data, size=size, price=price, pricelimit=plimit, exectype=exectype, valid=valid, oco=oco, parent=parent, transmit=transmit)  # Заявка на покупку/продажу
         order.addcomminfo(self.getcommissioninfo(data))  # По тикеру выставляем комиссии в заявку. Нужно для исполнения заявки в BackTrader
         order.addinfo(**kwargs)  # Передаем в заявку все дополнительные параметры, в т.ч. account_id
-        board, symbol = self.store.provider.dataname_to_board_symbol(data._name)  # По тикеру получаем режим торгов и тикер
-        exchange = self.store.provider.get_exchange(board, symbol)  # Биржа тикера. В Алор запросы выполняются по бирже и тикеру
         if order.exectype in (Order.Close, Order.StopTrail, Order.StopTrailLimit, Order.Historical):  # Эти типы заявок не реализованы
-            self.logger.warning(f'Постановка заявки {order.ref} по тикеру {board}.{symbol} на бирже {exchange} отклонена. Работа с заявками {order.exectype} не реализована')
+            self.logger.warning(f'Постановка заявки {order.ref} по тикеру {data.board}.{data.symbol} на бирже {data.exchange} отклонена. Работа с заявками {order.exectype} не реализована')
             order.reject(self)  # то отклоняем заявку
             self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
             return order  # Возвращаем отклоненную заявку
-        portfolio = self.store.provider.get_account(data.board, order.info['account_id'])['portfolio'] if 'account_id ' in order.info else data.portfolio  # Портфель из заявки/тикера
+        portfolio = self.store.provider.get_account(data.board, order.info['account_id'])['portfolio'] if 'account_id' in order.info else data.portfolio  # Портфель из заявки/тикера
         order.addinfo(portfolio=portfolio)  # Сохраняем в заявке
-        if not self.is_subscribed(portfolio, exchange):  # Если нет подписок портфеля/биржи
-            self.subscribe(portfolio, exchange)  # то подписываемся на события портфеля/биржи
+        if not self.is_subscribed(portfolio, data.exchange):  # Если нет подписок портфеля/биржи
+            self.subscribe(portfolio, data.exchange)  # то подписываемся на события портфеля/биржи
         if order.exectype != Order.Market and not order.price:  # Если цена заявки не указана для всех заявок, кроме рыночной
             price_type = 'Лимитная' if order.exectype == Order.Limit else 'Стоп'  # Для стоп заявок это будет триггерная (стоп) цена
-            self.logger.warning(f'Постановка заявки {order.ref} по тикеру {board}.{symbol} на бирже {exchange} отклонена. {price_type} цена (price) не указана для заявки типа {order.exectype}')
+            self.logger.warning(f'Постановка заявки {order.ref} по тикеру {data.board}.{data.symbol} на бирже {data.exchange} отклонена. {price_type} цена (price) не указана для заявки типа {order.exectype}')
             order.reject(self)  # то отклоняем заявку
             self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
             return order  # Возвращаем отклоненную заявку
         if order.exectype == Order.StopLimit and not order.pricelimit:  # Если лимитная цена не указана для стоп-лимитной заявки
-            self.logger.warning(f'Постановка заявки {order.ref} по тикеру {board}.{symbol} на бирже {exchange} отклонена. Лимитная цена (pricelimit) не указана для заявки типа {order.exectype}')
+            self.logger.warning(f'Постановка заявки {order.ref} по тикеру {data.board}.{data.symbol} на бирже {data.exchange} отклонена. Лимитная цена (pricelimit) не указана для заявки типа {order.exectype}')
             order.reject(self)  # то отклоняем заявку
             self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
             return order  # Возвращаем отклоненную заявку
@@ -216,7 +215,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         if not transmit or parent:  # Для родительской/дочерних заявок
             parent_ref = getattr(order.parent, 'ref', order.ref)  # Номер транзакции родительской заявки или номер заявки, если родительской заявки нет
             if order.ref != parent_ref and parent_ref not in self.pcs:  # Если есть родительская заявка, но она не найдена в очереди родительских/дочерних заявок
-                self.logger.warning(f'Постановка заявки {order.ref} по тикеру {board}.{symbol} на бирже {exchange} отклонена. Родительская заявка не найдена')
+                self.logger.warning(f'Постановка заявки {order.ref} по тикеру {data.board}.{data.symbol} на бирже {data.exchange} отклонена. Родительская заявка не найдена')
                 order.reject(self)  # то отклоняем заявку
                 self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
                 return order  # Возвращаем отклоненную заявку
