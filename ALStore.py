@@ -38,10 +38,10 @@ class ALStore(with_metaclass(MetaSingleton, object)):
         """Возвращает новый экземпляр класса брокера с заданными параметрами"""
         return cls.BrokerCls(*args, **kwargs)
 
-    def __init__(self):
+    def __init__(self, provider=AlorPy()):
         super(ALStore, self).__init__()
         self.notifs = deque()  # Уведомления хранилища
-        self.provider = AlorPy()  # Подключаемся ко всем торговым счетам
+        self.provider = provider  # Подключаемся ко всем торговым счетам
         self.new_bars = []  # Новые бары по всем подпискам на тикеры из Алор
 
     def start(self):
