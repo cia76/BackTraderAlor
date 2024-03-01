@@ -47,9 +47,9 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         cash = 0  # Будем набирать свободные средства
         if self.store.BrokerCls:  # Если брокер есть в хранилище
             if portfolio and exchange:  # Если считаем свободные средства по портфелю/бирже
-                cash = self.positions[(portfolio, exchange, None, 'RUB')].price  # Денежная позиция по портфелю/рынку
+                cash = next((position.price for key, position in self.positions.items() if key[0] == portfolio and key[1] == exchange and not key[2]), None)  # Денежная позиция по портфелю/рынку
             else:  # Если считаем свободные средства по всем счетам
-                cash = sum([position.price for key, position in self.positions.items() if key[3] == 'RUB'])  # Сумма всех денежных позиций
+                cash = sum([position.price for key, position in self.positions.items() if not key[2]])  # Сумма всех денежных позиций
                 self.cash = cash  # Сохраняем текущие свободные средства
         return cash
 
@@ -63,7 +63,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                     position = self.positions[(data.portfolio, data.exchange, data.board, data.symbol)]  # Позиция по тикеру
                     value += position.price * position.size  # Добавляем стоимость позиции по тикеру
             elif portfolio and exchange:  # Если считаем стоимость позиций по портфелю/бирже
-                value = sum([position.price * position.size for key, position in self.positions.items() if key[0] == portfolio and key[1] == exchange])  # Стоимость позиций по портфелю/бирже
+                value = sum([position.price * position.size for key, position in self.positions.items() if key[0] == portfolio and key[1] == exchange and key[2]])  # Стоимость позиций по портфелю/бирже
             else:  # Если считаем стоимость всех позиций
                 value = sum([position.price * position.size for key, position in self.positions.items() if key[2]])  # Стоимость всех позиций
                 self.value = value  # Сохраняем текущую стоимость позиций
