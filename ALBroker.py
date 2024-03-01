@@ -22,7 +22,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
     """Брокер Алор"""
     logger = logging.getLogger(f'ALBroker')  # Будем вести лог
 
-    def __init__(self, **kwargs):
+    def __init__(self):
         super(ALBroker, self).__init__()
         self.store = ALStore()  # Хранилище Алор
         self.notifs = collections.deque()  # Очередь уведомлений брокера о заявках
