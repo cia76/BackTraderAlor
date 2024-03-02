@@ -151,13 +151,15 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
                     self.history_bars.append(bar)  # то добавляем бар
         if len(self.history_bars) > 0:  # Если были получены бары из файла
             self.logger.debug(f'Получено бар из файла: {len(self.history_bars)} с {self.history_bars[0]["datetime"].strftime(self.dt_format)} по {self.history_bars[-1]["datetime"].strftime(self.dt_format)}')
+        else:  # Бары из файла не получены
+            self.logger.debug('Из файла новых бар не получено')
 
     def get_bars_from_history(self) -> None:
         """Получение бар из истории"""
         file_history_bars_len = len(self.history_bars)  # Кол-во полученных бар из файла для лога
-        seconds_from = self.get_seconds_from()  # Дата и время начала выборки
-        self.logger.debug(f'Получение бар из истории с {self.store.provider.utc_timestamp_to_msk_datetime(seconds_from).strftime(self.dt_format)}')
-        seconds_to = self.store.provider.msk_datetime_to_utc_timestamp(self.p.todate) if self.p.todate else 32536799999  # Дата и время окончания выборки
+        seconds_from = self.get_seconds_from()  # Дата и время начала выборки в секундах
+        seconds_to = self.store.provider.msk_datetime_to_utc_timestamp(self.p.todate) if self.p.todate else 32536799999  # Дата и время окончания выборки в секундах
+        self.logger.debug(f'Получение бар из истории с {self.store.provider.utc_timestamp_to_msk_datetime(seconds_from).strftime(self.dt_format)} по {self.store.provider.utc_timestamp_to_msk_datetime(seconds_to).strftime(self.dt_format)}')
         response = self.store.provider.get_history(self.exchange, self.symbol, self.alor_timeframe, seconds_from, seconds_to)  # Получаем бары из Алор
         if not response:  # Если в ответ ничего не получили
             self.logger.warning('Ошибка запроса бар из истории')
@@ -253,10 +255,10 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
 
     def get_seconds_from(self) -> int:
         """Дата и время начала выборки в кол-ве секунд, прошедших с 01.01.1970 00:00 UTC"""
-        if len(self.history_bars):  # Если получили бары из файла
-            dt = self.get_bar_close_date_time(self.history_bars[-1]['datetime'])  # то время начала выборки смещаем на следующий бар по UTC
-        elif self.p.fromdate:  # Если бары из файла не получили, но заданы дата и время начала интервала
-            dt = self.p.fromdate  # то время начала выборки берем из даты и времени начала интервала
+        if self.dt_last_open > datetime.min:  # Если в файле были бары
+            dt = self.get_bar_close_date_time(self.dt_last_open)  # то время начала выборки смещаем на следующий бар по UTC
+        # elif self.p.fromdate:  # Если бары из файла не получили, но заданы дата и время начала интервала
+        #     dt = self.p.fromdate  # то время начала выборки берем из даты и времени начала интервала
         else:  # Если бар из файла нет и не заданы дата и время начала интервала
             return 0  # то время начала выборки берем минимально возможное
         return self.store.provider.msk_datetime_to_utc_timestamp(dt)
@@ -290,7 +292,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
             self.logger.debug(f'Дата/время открытия бара {dt_open} <= последней даты/времени открытия {self.dt_last_open}')
             return False  # то бар не соответствует условиям выборки
         if self.p.fromdate and dt_open < self.p.fromdate or self.p.todate and dt_open > self.p.todate:  # Если задан диапазон, а бар за его границами
-            self.logger.debug(f'Дата/время открытия бара {dt_open} за границами диапазона {self.p.fromdate} - {self.p.todate}')
+            # self.logger.debug(f'Дата/время открытия бара {dt_open} за границами диапазона {self.p.fromdate} - {self.p.todate}')
             return False  # то бар не соответствует условиям выборки
         if self.p.sessionstart != time.min and dt_open.time() < self.p.sessionstart:  # Если задано время начала сессии и открытие бара до этого времени
             self.logger.debug(f'Дата/время открытия бара {dt_open} до начала торговой сессии {self.p.sessionstart}')
