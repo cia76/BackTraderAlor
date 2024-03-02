@@ -16,7 +16,7 @@ class LimitCancel(bt.Strategy):
     """
     logger = logging.getLogger('BackTraderAlor.LimitCancel')  # Будем вести лог
     params = (  # Параметры торговой системы
-        ('LimitPct', 1),  # Заявка на покупку на n% ниже цены закрытия
+        ('limit_pct', 1),  # Заявка на покупку на n% ниже цены закрытия
     )
 
     def __init__(self):
@@ -34,7 +34,7 @@ class LimitCancel(bt.Strategy):
         if not self.position:  # Если позиции нет
             if self.order and self.order.status == bt.Order.Accepted:  # Если заявка не исполнена (принята брокером)
                 self.cancel(self.order)  # то снимаем ее
-            limit_price = self.data.close[0] * (1 - self.p.LimitPct / 100)  # На n% ниже цены закрытия
+            limit_price = self.data.close[0] * (1 - self.p.limit_pct / 100)  # На n% ниже цены закрытия
             self.order = self.buy(exectype=bt.Order.Limit, price=limit_price)  # Лимитная заявка на покупку
             self.logger.info(f'Заявка {self.order.ref} - {"Покупка" if self.order.isbuy else "Продажа"} {self.order.data._name} {self.order.size} @ {self.order.price} cоздана и отправлена на биржу {self.order.data.exchange}')
         else:  # Если позиция есть
@@ -48,15 +48,14 @@ class LimitCancel(bt.Strategy):
 
     def notify_order(self, order):
         """Изменение статуса заявки"""
-        exchange = order.data.exchange  # Биржа
         if order.status in (bt.Order.Created, bt.Order.Submitted, bt.Order.Accepted):  # Если заявка создана, отправлена брокеру, принята брокером (не исполнена)
-            self.logger.info(f'Заявка {order.ref} на бирже {exchange} со статусом {order.getstatusname()}')
+            self.logger.info(f'Заявка {order.ref} на бирже {order.data.exchange} со статусом {order.getstatusname()}')
         elif order.status in (bt.Order.Canceled, bt.Order.Margin, bt.Order.Rejected, bt.Order.Expired):  # Если заявка отменена, нет средств, заявка отклонена брокером, снята по времени (снята)
-            self.logger.info(f'Заявка {order.ref} на бирже {exchange} отменена со статусом {order.getstatusname()}')
+            self.logger.info(f'Заявка {order.ref} на бирже {order.data.exchange} отменена со статусом {order.getstatusname()}')
         elif order.status == bt.Order.Partial:  # Если заявка частично исполнена
-            self.logger.info(f'Заявка {order.ref} на бирже {exchange} частично исполнена со статусом {order.getstatusname()}')
+            self.logger.info(f'Заявка {order.ref} на бирже {order.data.exchange} частично исполнена со статусом {order.getstatusname()}')
         elif order.status == bt.Order.Completed:  # Если заявка полностью исполнена
-            self.logger.info(f'Заявка на {"покупку" if order.isbuy() else "продажу"} на бирже {exchange} исполнена по цене {order.executed.price}, Стоимость {order.executed.value}, Комиссия {order.executed.comm}')
+            self.logger.info(f'Заявка на {"покупку" if order.isbuy() else "продажу"} на бирже {order.data.exchange} исполнена по цене {order.executed.price}, Стоимость {order.executed.value}, Комиссия {order.executed.comm}')
             self.order = None  # Сбрасываем заявку на вход в позицию
 
     def notify_trade(self, trade):
@@ -67,13 +66,14 @@ class LimitCancel(bt.Strategy):
 
 if __name__ == '__main__':  # Точка входа при запуске этого скрипта
     symbol = 'TQBR.SBER'  # Тикер в формате: <Код режима торгов>.<Тикер>
-    # schedule = MOEXStocks()  # Расписание торгов фондового рынка
     # symbol = 'RFUD.SI-3.24'  # Для фьючерсов: <RFUD>.<Код тикера заглавными буквами>-<Месяц экспирации: 3, 6, 9, 12>.<Последние 2 цифры года>
     # symbol = 'RFUD.RTS-3.24'
+    timeframe = bt.TimeFrame.Minutes  # Минутный временной интервал
+    compression = 1  # 1 минута
+    fromdate = datetime.today().date()  # За сегодня
+    live_bars = True  # Исторические и новые бары
+    schedule = MOEXStocks()  # Расписание торгов фондового рынка
     # schedule = MOEXFutures()  # Расписание торгов срочного рынка
-    # noinspection PyArgumentList
-    cerebro = bt.Cerebro(stdstats=False, quicknotify=True)  # Инициируем "движок" BackTrader. Стандартная статистика сделок и кривой доходности не нужна. События принимаем без задержек
-    store = ALStore()  # Хранилище Alor
 
     logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Формат сообщения
                         datefmt='%d.%m.%Y %H:%M:%S',  # Формат даты
@@ -84,13 +84,16 @@ if __name__ == '__main__':  # Точка входа при запуске это
     logging.getLogger('urllib3').setLevel(logging.CRITICAL + 1)
     logging.getLogger('websockets').setLevel(logging.CRITICAL + 1)
 
-    broker = store.getbroker(use_positions=False)  # Брокер Alor
+    # noinspection PyArgumentList
+    cerebro = bt.Cerebro(stdstats=False, quicknotify=True)  # Инициируем "движок" BackTrader. Стандартная статистика сделок и кривой доходности не нужна. События принимаем без задержек
+    store = ALStore()  # Хранилище Alor
+    broker = store.getbroker()  # Брокер Alor
     # noinspection PyArgumentList
     cerebro.setbroker(broker)  # Устанавливаем брокера
-    data = store.getdata(dataname=symbol, timeframe=bt.TimeFrame.Minutes, compression=1, account_id=0, live_bars=True)  # Исторические и новые минутные бары за все время по подписке
-    # data = store.getdata(dataname=symbol, timeframe=bt.TimeFrame.Minutes, compression=1, schedule=schedule, live_bars=True)  # Исторические и новые минутные бары за все время по расписанию
+    data = store.getdata(dataname=symbol, timeframe=timeframe, compression=compression, fromdate=fromdate, live_bars=live_bars)  # Исторические и новые минутные бары за сегодня по подписке
+    # data = store.getdata(dataname=symbol, timeframe=timeframe, compression=compression, fromdate=fromdate, schedule=schedule, live_bars=live_bars)  # Исторические и новые минутные бары за сегодня по расписанию
     cerebro.adddata(data)  # Добавляем данные
     cerebro.addsizer(bt.sizers.FixedSize, stake=10)  # Кол-во акций в штуках для покупки/продажи
     # cerebro.addsizer(bt.sizers.FixedSize, stake=1)  # Кол-во фьючерсов в штуках для покупки/продажи
-    cerebro.addstrategy(LimitCancel, LimitPct=1)  # Добавляем торговую систему с лимитным входом в n%
+    cerebro.addstrategy(LimitCancel, limit_pct=1)  # Добавляем торговую систему с лимитным входом в n%
     cerebro.run()  # Запуск торговой системы
