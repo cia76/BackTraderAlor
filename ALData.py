@@ -66,7 +66,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
             self.put_notification(self.CONNECTED)  # то отправляем уведомление о подключении и начале получения исторических бар
         if self.p.live_bars:  # Если получаем историю и новые бары
             if self.p.schedule:  # Если получаем новые бары по расписанию
-                self.guid = uuid4().hex  # guid расписания
+                self.guid = str(uuid4())  # guid расписания
                 Thread(target=self.stream_bars).start()  # Создаем и запускаем получение новых бар по расписанию в потоке
             else:  # Если получаем новые бары по подписке
                 # Ответ ALOR OpenAPI Support: Чтобы получать последний бар сессии на первом тике следующей сессии, нужно использовать скрытый параметр frequency в ms с очень большим значением (1_000_000_000)
