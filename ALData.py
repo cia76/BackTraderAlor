@@ -291,6 +291,8 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         if dt_open <= self.dt_last_open:  # Если пришел бар из прошлого (дата открытия меньше последней даты открытия)
             self.logger.debug(f'Дата/время открытия бара {dt_open} <= последней даты/времени открытия {self.dt_last_open}')
             return False  # то бар не соответствует условиям выборки
+        else:  # Бар не из прошлого
+            self.dt_last_open = dt_open  # Запоминаем дату/время открытия пришедшего бара для будущих сравнений
         if self.p.fromdate and dt_open < self.p.fromdate or self.p.todate and dt_open > self.p.todate:  # Если задан диапазон, а бар за его границами
             # self.logger.debug(f'Дата/время открытия бара {dt_open} за границами диапазона {self.p.fromdate} - {self.p.todate}')
             return False  # то бар не соответствует условиям выборки
@@ -308,7 +310,6 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         if dt_close > time_market_now and time_market_now.time() < self.p.sessionend:  # Если время закрытия бара еще не наступило на бирже, и сессия еще не закончилась
             self.logger.debug(f'Дата/время {dt_close} закрытия бара еще не наступило')
             return False  # то бар не соответствует условиям выборки
-        self.dt_last_open = dt_open  # Запоминаем дату/время открытия пришедшего бара для будущих сравнений
         return True  # В остальных случаях бар соответствуем условиям выборки
 
     def save_bar_to_file(self, bar) -> None:
