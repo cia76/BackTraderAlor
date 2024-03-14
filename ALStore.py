@@ -47,16 +47,16 @@ class ALStore(with_metaclass(MetaSingleton, object)):
     def start(self):
         self.provider.on_new_bar = lambda response: self.new_bars.append(dict(guid=response['guid'], data=response['data']))  # Обработчик новых баров по подписке из Алор
         # События WebSocket Thread/Task для понимания, что происходит с провайдером
-        self.provider.on_entering = lambda: self.logger.info(f'WebSocket Thread: Запуск')
-        self.provider.on_enter = lambda: self.logger.info(f'WebSocket Thread: Запущен')
-        self.provider.on_connect = lambda: self.logger.info(f'WebSocket Task: Подключен к серверу')
-        self.provider.on_resubscribe = lambda: self.logger.info(f'WebSocket Task: Возобновление подписок ({len(self.provider.subscriptions)})')
-        self.provider.on_ready = lambda: self.logger.info(f'WebSocket Task: Готов')
-        self.provider.on_disconnect = lambda: self.logger.info(f'WebSocket Task: Отключен от сервера')
-        self.provider.on_timeout = lambda: self.logger.info(f'WebSocket Task: Таймаут')
-        self.provider.on_error = lambda response: self.logger.info(f'WebSocket Task: {response}')
-        self.provider.on_cancel = lambda: self.logger.info(f'WebSocket Task: Отмена')
-        self.provider.on_exit = lambda: self.logger.info(f'WebSocket Thread: Завершение')
+        self.provider.on_entering = lambda: self.logger.debug(f'WebSocket Thread: Запуск')
+        self.provider.on_enter = lambda: self.logger.debug(f'WebSocket Thread: Запущен')
+        self.provider.on_connect = lambda: self.logger.debug(f'WebSocket Task: Подключен к серверу')
+        self.provider.on_resubscribe = lambda: self.logger.debug(f'WebSocket Task: Возобновление подписок ({len(self.provider.subscriptions)})')
+        self.provider.on_ready = lambda: self.logger.debug(f'WebSocket Task: Готов')
+        self.provider.on_disconnect = lambda: self.logger.debug(f'WebSocket Task: Отключен от сервера')
+        self.provider.on_timeout = lambda: self.logger.debug(f'WebSocket Task: Таймаут')
+        self.provider.on_error = lambda response: self.logger.debug(f'WebSocket Task: {response}')
+        self.provider.on_cancel = lambda: self.logger.debug(f'WebSocket Task: Отмена')
+        self.provider.on_exit = lambda: self.logger.debug(f'WebSocket Thread: Завершение')
 
     def put_notification(self, msg, *args, **kwargs):
         self.notifs.append((msg, args, kwargs))
