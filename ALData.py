@@ -39,6 +39,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         self.intraday = self.p.timeframe in (TimeFrame.Minutes, TimeFrame.Seconds)  # Внутридневной временной интервал. Алор измеряет внутридневные интервалы в секундах
         self.board, self.symbol = self.store.provider.dataname_to_board_symbol(self.p.dataname)  # По тикеру получаем код режима торгов и тикера
         self.exchange = self.store.provider.get_exchange(self.board, self.symbol)  # Биржа тикера. В Алор запросы выполняются по коду биржи и тикера
+        self.lotsize = self.symbol.sprovider.get_symbol(self.exchange, self.symbol)['lotsize']  # Размер лота
         self.portfolio = self.store.provider.get_account(self.board, self.p.account_id)['portfolio']  # Портфель тикера
         self.alor_timeframe = self.bt_timeframe_to_alor_timeframe(self.p.timeframe, self.p.compression)  # Конвертируем временной интервал из BackTrader в Алор
         self.tf = self.bt_timeframe_to_tf(self.p.timeframe, self.p.compression)  # Конвертируем временной интервал из BackTrader для имени файла истории и расписания
@@ -101,7 +102,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
             dt_open = self.get_bar_open_date_time(new_bar['time'])  # Дата и время открытия бара
             bar = dict(datetime=dt_open,
                        open=new_bar['open'], high=new_bar['high'], low=new_bar['low'], close=new_bar['close'],
-                       volume=new_bar['volume'])  # Бар из хранилища новых бар
+                       volume=new_bar['volume'] * self.lotsize)  # Бар из хранилища новых бар
             if not self.is_bar_valid(bar):  # Если бар не соответствует всем условиям выборки
                 return None  # то пропускаем бар, будем заходить еще
             self.logger.debug(f'Сохранение нового бара с {bar["datetime"].strftime(self.dt_format)} в файл')
@@ -171,7 +172,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         for new_bar in new_bars_dict:  # Пробегаемся по всем полученным барам
             bar = dict(datetime=self.get_bar_open_date_time(new_bar['time']),
                        open=new_bar['open'], high=new_bar['high'], low=new_bar['low'], close=new_bar['close'],
-                       volume=new_bar['volume'])  # Бар из истории
+                       volume=new_bar['volume'] * self.lotsize)  # Бар из истории
             if self.is_bar_valid(bar):  # Если исторический бар соответствует всем условиям выборки
                 self.history_bars.append(bar)  # то добавляем бар
                 self.save_bar_to_file(bar)  # и сохраняем его в файл
