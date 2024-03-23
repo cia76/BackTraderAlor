@@ -39,7 +39,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         self.intraday = self.p.timeframe in (TimeFrame.Minutes, TimeFrame.Seconds)  # Внутридневной временной интервал. Алор измеряет внутридневные интервалы в секундах
         self.board, self.symbol = self.store.provider.dataname_to_board_symbol(self.p.dataname)  # По тикеру получаем код режима торгов и тикера
         self.exchange = self.store.provider.get_exchange(self.board, self.symbol)  # Биржа тикера. В Алор запросы выполняются по коду биржи и тикера
-        self.lotsize = self.symbol.sprovider.get_symbol(self.exchange, self.symbol)['lotsize']  # Размер лота
+        self.lotsize = self.store.provider.get_symbol(self.exchange, self.symbol)['lotsize']  # Размер лота
         self.portfolio = self.store.provider.get_account(self.board, self.p.account_id)['portfolio']  # Портфель тикера
         self.alor_timeframe = self.bt_timeframe_to_alor_timeframe(self.p.timeframe, self.p.compression)  # Конвертируем временной интервал из BackTrader в Алор
         self.tf = self.bt_timeframe_to_tf(self.p.timeframe, self.p.compression)  # Конвертируем временной интервал из BackTrader для имени файла истории и расписания
