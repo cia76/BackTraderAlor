@@ -26,7 +26,8 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         ('schedule', None),  # Расписание работы биржи. Если не задано, то берем из подписки
         ('live_bars', False),  # False - только история, True - история и новые бары
     )
-    datapath = os.path.join('..', '..', 'Data', 'Alor', '')  # Путь до файла истории
+    # datapath = '/home/orangepi/PyAutoTrading/Data/Alor/'  # Путь сохранения файла истории
+    datapath = os.path.join('..', '..', 'Data', 'Alor', '')  # Путь сохранения файла истории
     delimiter = '\t'  # Разделитель значений в файле истории. По умолчанию табуляция
     dt_format = '%d.%m.%Y %H:%M'  # Формат представления даты и времени в файле истории. По умолчанию русский формат
 
