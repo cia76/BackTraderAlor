@@ -234,6 +234,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         """Отправка заявки на биржу"""
         portfolio = order.info['portfolio']  # Портфель
         exchange = order.data.exchange  # Биржа тикера
+        class_code = order.data.board  # Код режима торгов
         symbol = order.data.symbol  # Тикер
         side = 'buy' if order.isbuy() else 'sell'  # Покупка/продажа
         si = self.store.provider.get_symbol_info(exchange, symbol)  # Информация о тикере
@@ -245,12 +246,10 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             limit_price = self.store.provider.price_to_alor_price(exchange, symbol, order.price)  # Лимитная цена
             response = self.store.provider.create_limit_order(portfolio, exchange, symbol, side, quantity, limit_price)
         elif order.exectype == Order.Stop:  # Стоп заявка
-            class_code = order.info['board']  # Код режима торгов
             stop_price = self.store.provider.price_to_alor_price(exchange, symbol, order.price)  # Стоп цена
             condition = 'MoreOrEqual' if order.isbuy() else 'LessOrEqual'  # Условие срабатывания стоп цены
             response = self.store.provider.create_stop_order(portfolio, exchange, symbol, class_code, side, quantity, stop_price, condition)
         elif order.exectype == Order.StopLimit:  # Стоп-лимитная заявка
-            class_code = order.info['board']  # Код режима торгов
             stop_price = self.store.provider.price_to_alor_price(exchange, symbol, order.price)  # Стоп цена
             limit_price = self.store.provider.price_to_alor_price(exchange, symbol, order.pricelimit)  # Лимитная цена
             condition = 'MoreOrEqual' if order.isbuy() else 'LessOrEqual'  # Условие срабатывания стоп цены
