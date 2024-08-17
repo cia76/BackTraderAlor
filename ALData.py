@@ -174,9 +174,9 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
             bar = dict(datetime=self.get_bar_open_date_time(new_bar['time']),
                        open=new_bar['open'], high=new_bar['high'], low=new_bar['low'], close=new_bar['close'],
                        volume=new_bar['volume'] * self.lotsize)  # Бар из истории
-            self.save_bar_to_file(bar)  # Сохраняем бар в файл
             if self.is_bar_valid(bar):  # Если исторический бар соответствует всем условиям выборки
                 self.history_bars.append(bar)  # то добавляем бар
+                self.save_bar_to_file(bar)  # и сохраняем бар в файл
         if len(self.history_bars) - file_history_bars_len > 0:  # Если получены бары из истории
             self.logger.debug(f'Получено бар из истории: {len(self.history_bars) - file_history_bars_len} с {self.history_bars[file_history_bars_len]["datetime"].strftime(self.dt_format)} по {self.history_bars[-1]["datetime"].strftime(self.dt_format)}')
         else:  # Бары из истории не получены
