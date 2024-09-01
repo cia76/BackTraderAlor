@@ -1,7 +1,7 @@
+import logging  # Будем вести лог
 from typing import Union  # Объединение типов
-import collections
+from collections import defaultdict, OrderedDict, deque  # Словари и очередь
 from datetime import datetime
-import logging
 
 from backtrader import BrokerBase, Order, BuyOrder, SellOrder
 from backtrader.position import Position
@@ -12,26 +12,26 @@ from BackTraderAlor import ALStore, ALData
 
 # noinspection PyArgumentList
 class MetaALBroker(BrokerBase.__class__):
-    def __init__(self, name, bases, dct):
-        super(MetaALBroker, self).__init__(name, bases, dct)  # Инициализируем класс брокера
-        ALStore.BrokerCls = self  # Регистрируем класс брокера в хранилище Алор
+    def __init__(cls, name, bases, dct):
+        super(MetaALBroker, cls).__init__(name, bases, dct)  # Инициализируем класс брокера
+        ALStore.BrokerCls = cls  # Регистрируем класс брокера в хранилище Алор
 
 
-# noinspection PyProtectedMember,PyArgumentList,PyUnusedLocal
+# noinspection PyProtectedMember,PyArgumentList
 class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
     """Брокер Алор"""
     logger = logging.getLogger(f'ALBroker')  # Будем вести лог
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         super(ALBroker, self).__init__()
-        self.store = ALStore()  # Хранилище Алор
-        self.notifs = collections.deque()  # Очередь уведомлений брокера о заявках
+        self.store = ALStore(**kwargs)  # Хранилище Алор
+        self.notifs = deque()  # Очередь уведомлений брокера о заявках
         self.startingcash = self.cash = 0  # Стартовые и текущие свободные средства
         self.startingvalue = self.value = 0  # Стартовая и текущая стоимость позиций
-        self.positions = collections.defaultdict(Position)  # Список позиций
-        self.orders = collections.OrderedDict()  # Список заявок, отправленных на биржу
+        self.positions = defaultdict(Position)  # Список позиций
+        self.orders = OrderedDict()  # Список заявок, отправленных на биржу
         self.ocos = {}  # Список связанных заявок (One Cancel Others)
-        self.pcs = collections.defaultdict(collections.deque)  # Очередь всех родительских/дочерних заявок (Parent - Children)
+        self.pcs = defaultdict(deque)  # Очередь всех родительских/дочерних заявок (Parent - Children)
 
         self.store.provider.on_position = self.on_position  # Обработка позиций
         self.store.provider.on_trade = self.on_trade  # Обработка сделок
@@ -42,32 +42,50 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         super(ALBroker, self).start()
         self.get_all_active_positions()  # Получаем все активные позиции, в т.ч. денежные
 
-    def getcash(self, portfolio=None, exchange=None):
-        """Свободные средства по портфелю/бирже, по всем счетам"""
-        cash = 0  # Будем набирать свободные средства
-        if self.store.BrokerCls:  # Если брокер есть в хранилище
-            if portfolio and exchange:  # Если считаем свободные средства по портфелю/бирже
+    def getcash(self, account_id=None, exchange=None):
+        """Свободные средства по всем счетам, по портфелю/бирже"""
+        if not self.store.BrokerCls:  # Если брокера нет в хранилище
+            return 0
+        if account_id is not None:  # Если считаем свободные средства по счету
+            account = next((account for account in self.store.provider.accounts if account['account_id'] == account_id), None)  # то пытаемся найти счет
+            if not account:  # Если счет не найден
+                self.logger.error(f'getcash: Счет номер {account_id} не найден. Проверьте правильность номера счета')
+                return 0
+            portfolio = account['portfolio']  # Портфель
+            if exchange:  # Если считаем свободные средства по портфелю/бирже
                 cash = next((position.price for key, position in self.positions.items() if key[0] == portfolio and key[1] == exchange and not key[2]), None)  # Денежная позиция по портфелю/рынку
-            else:  # Если считаем свободные средства по всем счетам
-                cash = sum([position.price for key, position in self.positions.items() if not key[2]])  # Сумма всех денежных позиций
-                self.cash = cash  # Сохраняем текущие свободные средства
-        return cash
+            else:  # Если считаем свободные средства по портфелю
+                cash = next((position.price for key, position in self.positions.items() if key[0] == portfolio and not key[2]), None)  # Денежная позиция по портфелю
+        else:  # Если считаем свободные средства по всем счетам
+            cash = sum([position.price for key, position in self.positions.items() if not key[2]])  # Сумма всех денежных позиций
+        if account_id is None and cash:  # Если были получены все свободные средства
+            self.cash = cash  # то сохраняем все свободные средства
+        return self.cash
 
-    def getvalue(self, datas=None, portfolio=None, exchange=None):
-        """Стоимость позиции, позиций по портфелю/бирже, всех позиций"""
+    def getvalue(self, datas=None, account_id=None, exchange=None):
+        """Стоимость всех позиций, позиции/позиций, по портфелю/бирже"""
+        if not self.store.BrokerCls:  # Если брокера нет в хранилище
+            return 0
         value = 0  # Будем набирать стоимость позиций
-        if self.store.BrokerCls:  # Если брокер есть в хранилище
-            if datas:  # Если считаем стоимость позиции/позиций
-                data: ALData  # Данные Алор
-                for data in datas:  # Пробегаемся по всем тикерам
-                    position = self.positions[(data.portfolio, data.exchange, data.board, data.symbol)]  # Позиция по тикеру
-                    value += position.price * position.size  # Добавляем стоимость позиции по тикеру
-            elif portfolio and exchange:  # Если считаем стоимость позиций по портфелю/бирже
+        if datas:  # Если считаем стоимость позиции/позиций
+            data: ALData  # Данные Алор
+            for data in datas:  # Пробегаемся по всем тикерам
+                position = self.positions[(data.portfolio, data.exchange, data.board, data.symbol)]  # Позиция по тикеру
+                value += position.price * position.size  # Добавляем стоимость позиции по тикеру
+        elif account_id is not None:  # Если считаем свободные средства по счету
+            account = next((account for account in self.store.provider.accounts if account['account_id'] == account_id), None)  # то пытаемся найти счет
+            if not account:  # Если счет не найден
+                self.logger.error(f'getcash: Счет номер {account_id} не найден. Проверьте правильность номера счета')
+                return 0
+            portfolio = account['portfolio']  # Портфель
+            if exchange:  # Если считаем свободные средства по портфелю/бирже
                 value = sum([position.price * position.size for key, position in self.positions.items() if key[0] == portfolio and key[1] == exchange and key[2]])  # Стоимость позиций по портфелю/бирже
-            else:  # Если считаем стоимость всех позиций
-                value = sum([position.price * position.size for key, position in self.positions.items() if key[2]])  # Стоимость всех позиций
-                self.value = value  # Сохраняем текущую стоимость позиций
-        return value
+            else:  # Если считаем свободные средства по портфелю
+                value = sum([position.price * position.size for key, position in self.positions.items() if key[0] == portfolio and key[2]])  # Стоимость позиций по портфелю
+        else:  # Если считаем стоимость всех позиций
+            value = sum([position.price * position.size for key, position in self.positions.items() if key[2]])  # Стоимость всех позиций
+            self.value = value  # Сохраняем текущую стоимость позиций
+        return self.value
 
     def getposition(self, data: ALData):
         """Позиция по тикеру
@@ -165,8 +183,8 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
                     else:  # Если пришла позиция
                         si = self.store.provider.get_symbol_info(exchange, symbol)  # Информация о тикере
                         board = si['board']  # Код режима торгов
-                        size = position['qty'] * si['lotsize']  # Кол-во в штуках
-                        price = self.store.provider.alor_price_to_price(exchange, symbol, position['avgPrice'])  # Цена входа
+                        size = self.store.provider.lots_to_size(exchange, symbol, position['qty'])  # Кол-во в штуках
+                        price = self.store.provider.alor_price_to_price(exchange, symbol, position['avgPrice'])  # Цена входа в рублях за штуку
                         value += price * size  # Увеличиваем общий размер стоимости позиций
                     self.positions[(portfolio, exchange, board, symbol)] = Position(size, price)  # Сохраняем в списке открытых позиций
         self.cash = cash  # Сохраняем текущие свободные средства
@@ -195,8 +213,16 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             order.reject(self)  # то отклоняем заявку
             self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
             return order  # Возвращаем отклоненную заявку
-        portfolio = self.store.provider.get_account(data.board, order.info['account_id'])['portfolio'] if 'account_id' in order.info else data.portfolio  # Портфель из заявки/тикера
-        order.addinfo(portfolio=portfolio)  # Сохраняем в заявке
+        if 'account_id' in order.info:  # Если передали номер счета
+            account = next((account for account in self.store.provider.accounts if account['account_id'] == order.info['account_id']), None)  # то получаем счет по номеру
+        else:  # Если не передали номер счета
+            account = next((account for account in self.store.provider.accounts if data.board in account['boards']), None)  # то ищем первый счет с режимом торгов тикера
+        if not account:  # Если счет не найден
+            self.logger.error(f'create_order: Постановка заявки {order.ref} по тикеру {data.board}.{data.symbol} отменена. Не найден счет')
+            order.reject(self)  # то отменяем заявку (статус Order.Rejected)
+            return order  # Возвращаем отмененную заявку
+        order.addinfo(account=account)  # Передаем в заявку счет
+        portfolio = account['portfolio']  # Портфель из счета
         if not self.is_subscribed(portfolio, data.exchange):  # Если нет подписок портфеля/биржи
             self.subscribe(portfolio, data.exchange)  # то подписываемся на события портфеля/биржи
         if order.exectype != Order.Market and not order.price:  # Если цена заявки не указана для всех заявок, кроме рыночной
@@ -210,6 +236,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             order.reject(self)  # то отклоняем заявку
             self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
             return order  # Возвращаем отклоненную заявку
+
         if oco:  # Если есть связанная заявка
             self.ocos[order.ref] = oco.ref  # то заносим в список связанных заявок
         if not transmit or parent:  # Для родительской/дочерних заявок
@@ -232,33 +259,40 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
 
     def place_order(self, order: Order):
         """Отправка заявки на биржу"""
-        portfolio = order.info['portfolio']  # Портфель
+        portfolio = order.info['account']['portfolio']  # Портфель
         exchange = order.data.exchange  # Биржа тикера
         class_code = order.data.board  # Код режима торгов
         symbol = order.data.symbol  # Тикер
         side = 'buy' if order.isbuy() else 'sell'  # Покупка/продажа
-        si = self.store.provider.get_symbol_info(exchange, symbol)  # Информация о тикере
-        quantity = abs(order.size // si['lotsize'])  # Размер позиции в лотах. В Алор всегда передается положительный размер лота
+        quantity = abs(order.size if order.data.derivative else self.store.provider.size_to_lots(exchange, symbol, order.size))  # Размер позиции в лотах. В Алор всегда передается положительный размер лота
+        if order.data.derivative:  # Для деривативов
+            order.size = self.store.provider.lots_to_size(exchange, symbol, order.size)  # сохраняем в заявку размер позиции в штуках
         response = None  # Результат запроса
         if order.exectype == Order.Market:  # Рыночная заявка
             response = self.store.provider.create_market_order(portfolio, exchange, symbol, side, quantity)
         elif order.exectype == Order.Limit:  # Лимитная заявка
-            limit_price = self.store.provider.price_to_alor_price(exchange, symbol, order.price)  # Лимитная цена
+            limit_price = self.store.provider.price_to_valid_price(exchange, symbol, order.price) if order.data.derivative else self.store.provider.price_to_alor_price(exchange, symbol, order.price)  # Лимитная цена
+            if order.data.derivative:  # Для деривативов
+                order.price = self.store.provider.alor_price_to_price(exchange, symbol, order.price)  # Сохраняем в заявку лимитную цену заявки в рублях за штуку
             response = self.store.provider.create_limit_order(portfolio, exchange, symbol, side, quantity, limit_price)
         elif order.exectype == Order.Stop:  # Стоп заявка
-            stop_price = self.store.provider.price_to_alor_price(exchange, symbol, order.price)  # Стоп цена
+            stop_price = self.store.provider.price_to_valid_price(exchange, symbol, order.price) if order.data.derivative else self.store.provider.price_to_alor_price(exchange, symbol, order.price)  # Стоп цена
+            if order.data.derivative:  # Для деривативов
+                order.price = self.store.provider.alor_price_to_price(exchange, symbol, order.price)  # Сохраняем в заявку стоп цену заявки в рублях за штуку
             condition = 'MoreOrEqual' if order.isbuy() else 'LessOrEqual'  # Условие срабатывания стоп цены
             response = self.store.provider.create_stop_order(portfolio, exchange, symbol, class_code, side, quantity, stop_price, condition)
         elif order.exectype == Order.StopLimit:  # Стоп-лимитная заявка
-            stop_price = self.store.provider.price_to_alor_price(exchange, symbol, order.price)  # Стоп цена
-            limit_price = self.store.provider.price_to_alor_price(exchange, symbol, order.pricelimit)  # Лимитная цена
+            stop_price = self.store.provider.price_to_valid_price(exchange, symbol, order.price) if order.data.derivative else self.store.provider.price_to_alor_price(exchange, symbol, order.price)  # Стоп цена
+            limit_price = self.store.provider.price_to_valid_price(exchange, symbol, order.pricelimit) if order.data.derivative else self.store.provider.price_to_alor_price(exchange, symbol, order.pricelimit)  # Лимитная цена
+            if order.data.derivative:  # Для деривативов
+                order.price = self.store.provider.alor_price_to_price(exchange, symbol, order.price) if order.data.derivative else stop_price  # Сохраняем в заявку стоп цену заявки в рублях за штуку
+                order.pricelimit = self.store.provider.alor_price_to_price(exchange, symbol, order.pricelimit) if order.data.derivative else limit_price  # Сохраняем в заявку лимитную цену заявки в рублях за штуку
             condition = 'MoreOrEqual' if order.isbuy() else 'LessOrEqual'  # Условие срабатывания стоп цены
             response = self.store.provider.create_stop_limit_order(portfolio, exchange, symbol, class_code, side, quantity, stop_price, limit_price, condition)
         order.submit(self)  # Отправляем заявку на биржу (Order.Submitted)
         self.notifs.append(order.clone())  # Уведомляем брокера об отправке заявки на биржу
         if not response:  # Если при отправке заявки на биржу произошла веб ошибка
-            board = order.info['board']  # Режим торгов
-            self.logger.warning(f'Постановка заявки по тикеру {board}.{symbol} на бирже {exchange} отклонена. Ошибка веб сервиса')
+            self.logger.warning(f'Постановка заявки по тикеру {class_code}.{symbol} на бирже {exchange} отклонена. Ошибка веб сервиса')
             order.reject(self)  # то отклоняем заявку
             self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
             return order  # Возвращаем отклоненную заявку
@@ -271,13 +305,13 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         """Отмена заявки"""
         if not order.alive():  # Если заявка уже была завершена
             return  # то выходим, дальше не продолжаем
-        portfolio = order.info['portfolio']  # Портфель
+        if order.ref not in self.orders:  # Если заявка не найдена
+            return  # то выходим, дальше не продолжаем
+        portfolio = order.info['account']['portfolio']  # Портфель
         exchange = order.data.exchange  # Код биржи
         order_number = order.info['order_number']  # Номер заявки на бирже
-        if order.exectype in (Order.Market, Order.Limit):  # Для рыночных и лимитных заявок
-            self.store.provider.delete_order(portfolio, exchange, order_number, False)  # Снятие заявки
-        else:  # Для стоп заявок
-            self.store.provider.delete_order(portfolio, exchange, order_number, True)  # Снятие стоп заявки
+        stop_order = order.exectype in [Order.Stop, Order.StopLimit]  # Задана стоп заявка
+        self.store.provider.delete_order(portfolio, exchange, order_number, stop_order)  # Снятие лимитной / стоп заявки
         return order  # В список уведомлений ничего не добавляем. Ждем события on_order
 
     def oco_pc_check(self, order):
@@ -318,7 +352,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             si = self.store.provider.get_symbol_info(exchange, symbol)  # Информация о тикере
             board = si['board']  # Код режима торгов
             size = position['qty'] * si['lotsize']  # Кол-во в штуках
-            price = self.store.provider.alor_price_to_price(exchange, symbol, position['avgPrice'])  # Цена входа
+            price = self.store.provider.alor_price_to_price(exchange, symbol, position['avgPrice'])  # Цена входа в рублях за штуку
         self.positions[(portfolio, exchange, board, symbol)] = Position(size, price)  # Сохраняем в списке открытых позиций
 
     def on_order(self, response):
