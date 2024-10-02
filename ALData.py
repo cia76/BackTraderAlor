@@ -118,7 +118,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
         self.lines.high[0] = bar['high'] if self.derivative else self.store.provider.alor_price_to_price(self.exchange, self.symbol, bar['high'])  # цена без изменения
         self.lines.low[0] = bar['low'] if self.derivative else self.store.provider.alor_price_to_price(self.exchange, self.symbol, bar['low'])  # Для остальных
         self.lines.close[0] = bar['close'] if self.derivative else self.store.provider.alor_price_to_price(self.exchange, self.symbol, bar['close'])  # цена в рублях за штуку
-        self.lines.volume[0] = int(bar['volume']) if self.derivative else self.store.provider.lots_to_size(self.class_code, self.sec_code, int(bar['volume']))  # Для деривативов кол-во лотов. Для остальных кол-во штук
+        self.lines.volume[0] = int(bar['volume']) if self.derivative else self.store.provider.lots_to_size(self.exchange, self.symbol, int(bar['volume']))  # Для деривативов кол-во лотов. Для остальных кол-во штук
         self.lines.openinterest[0] = 0  # Открытый интерес в Алор не учитывается
         return True  # Будем заходить сюда еще
 
