@@ -102,6 +102,7 @@ class ALData(with_metaclass(MetaALData, AbstractDataBase)):
             bar = new_bars[0]  # Берем первый бар из хранилища новых бар. С ним будем работать
             self.store.new_bars.remove(bar)  # Удаляем этот бар из хранилища новых бар
             bar = bar['data']  # Данные бара
+            # self.logger.debug(f'Новый бар из подписки {bar}')  # Для отладки
             if not self.is_bar_valid(bar):  # Если бар не соответствует всем условиям выборки
                 return None  # то пропускаем бар, будем заходить еще
             self.logger.debug(f'Сохранение нового бара с {bar["datetime"].strftime(self.dt_format)} в файл')
