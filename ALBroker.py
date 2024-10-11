@@ -213,10 +213,8 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
             order.reject(self)  # то отклоняем заявку
             self.oco_pc_check(order)  # Проверяем связанные и родительскую/дочерние заявки
             return order  # Возвращаем отклоненную заявку
-        if 'account_id' in order.info:  # Если передали номер счета
-            account = next((account for account in self.store.provider.accounts if account['account_id'] == order.info['account_id']), None)  # то получаем счет по номеру
-        else:  # Если не передали номер счета
-            account = next((account for account in self.store.provider.accounts if data.board in account['boards']), None)  # то ищем первый счет с режимом торгов тикера
+        account_id = 0 if 'account_id' not in order.info else order.info['account_id']  # Получаем номер счета, если его передали. Иначе, получаем счет по умолчанию
+        account = next((account for account in self.store.provider.accounts if account['account_id'] == account_id and data.board in account['boards']), None)  # Получаем счет по номеру и режиму торгов
         if not account:  # Если счет не найден
             self.logger.error(f'create_order: Постановка заявки {order.ref} по тикеру {data.board}.{data.symbol} отменена. Не найден счет')
             order.reject(self)  # то отменяем заявку (статус Order.Rejected)
