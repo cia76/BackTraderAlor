@@ -1,6 +1,6 @@
 import logging  # Будем вести лог
 from collections import deque
-from datetime import datetime
+from datetime import datetime, UTC
 
 from backtrader.metabase import MetaParams
 from backtrader.utils.py3 import with_metaclass
@@ -85,4 +85,4 @@ class ALStore(with_metaclass(MetaSingleton, object)):
     def get_bar_open_date_time(self, timestamp, intraday) -> datetime:
         """Дата и время открытия бара. Переводим из GMT в MSK для внутридневного интервала . Оставляем в GMT для дневок и выше."""
         return self.provider.utc_timestamp_to_msk_datetime(timestamp) if intraday\
-            else datetime.utcfromtimestamp(timestamp)  # Время открытия бара
+            else datetime.fromtimestamp(timestamp, UTC)  # Время открытия бара
