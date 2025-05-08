@@ -85,7 +85,7 @@ class ALBroker(with_metaclass(MetaALBroker, BrokerBase)):
         else:  # Если считаем стоимость всех позиций
             value = sum([position.price * position.size for key, position in self.positions.items() if key[2]])  # Стоимость всех позиций
             self.value = value  # Сохраняем текущую стоимость позиций
-        return self.value
+        return value
 
     def getposition(self, data: ALData):
         """Позиция по тикеру
